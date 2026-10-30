@@ -34,3 +34,13 @@ Discord-style voice channels in the browser, up to 10 people per channel. Built 
 - `components/VoiceRoom.tsx`: the call (participants, controls, audio)
 - `app/api/token/route.ts`: issues LiveKit join tokens and enforces the room limit
 - `app/api/rooms/route.ts`: lists who is in each channel
+
+## Deploying
+The GitHub repo is connected to Vercel. Every push to `main` deploys to https://call.muymethy.tech automatically:
+```
+git add .
+git commit -m "what I changed"
+git push
+```
+Pushes to other branches get their own preview URL, so you can test changes before merging into `main`.
+LiveKit keys for the live site are set in Vercel → Project → Settings → Environment Variables (not in git).
