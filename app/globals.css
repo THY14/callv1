@@ -123,6 +123,52 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 .msg-content a { color: #00a8fc; text-decoration: none; }
 .msg-content a:hover { text-decoration: underline; }
 
+.msg-edited { font-size: 11px; color: #949ba4; }
+
+/* Edit / delete buttons on your own messages */
+.msg-actions {
+  position: absolute; top: -14px; right: 16px; display: none; gap: 2px; padding: 2px;
+  background: #313338; border: 1px solid #26272b; border-radius: 6px; box-shadow: 0 2px 8px rgba(0, 0, 0, .25);
+}
+.msg-actions button {
+  display: grid; place-items: center; min-width: 32px; height: 30px; padding: 0 6px;
+  border: none; border-radius: 4px; background: none; color: #b5bac1;
+}
+.msg-actions button:hover { background: #404249; color: #f2f3f5; }
+.msg-actions button.danger:hover, .msg-actions button.confirm { color: #f23f43; }
+.msg-actions button.confirm { background: rgba(242, 63, 67, .12); }
+.confirm-text { font-size: 12px; font-weight: 700; }
+@media (hover: hover) {
+  .msg.mine:hover .msg-actions { display: flex; }
+}
+.msg.selected { background: #2e3035; }
+.msg.selected .msg-actions { display: flex; }
+
+.edit-box { margin-top: 4px; }
+.edit-box textarea {
+  width: 100%; resize: none; border: none; border-radius: 8px; background: #383a40; color: #f2f3f5;
+  padding: 9px 12px; font: inherit; font-size: 15px; line-height: 1.35; max-height: 160px; outline: none;
+}
+.edit-actions { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.edit-hint { flex: 1; font-size: 12px; color: #949ba4; }
+.edit-cancel, .edit-save { border: none; border-radius: 4px; padding: 5px 12px; font-size: 13px; font-weight: 600; }
+.edit-cancel { background: none; color: #dbdee1; }
+.edit-cancel:hover { text-decoration: underline; }
+.edit-save { background: #5865f2; color: white; }
+
+/* "Sokha is typing…" (fixed height so the chat doesn't jump) */
+.typing {
+  height: 22px; flex-shrink: 0; display: flex; align-items: center; gap: 6px;
+  padding: 0 18px; font-size: 13px; color: #b5bac1; overflow: hidden;
+}
+.typing-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.typing-text { font-weight: 500; }
+.typing-dots { display: inline-flex; gap: 3px; }
+.typing-dots i { width: 6px; height: 6px; border-radius: 50%; background: #b5bac1; animation: typing-bounce 1.2s infinite; }
+.typing-dots i:nth-child(2) { animation-delay: .15s; }
+.typing-dots i:nth-child(3) { animation-delay: .3s; }
+@keyframes typing-bounce { 0%, 60%, 100% { transform: translateY(0); opacity: .5; } 30% { transform: translateY(-3px); opacity: 1; } }
+
 .chat-input { display: flex; align-items: flex-end; gap: 8px; padding: 0 16px 20px; flex-shrink: 0; }
 .chat-input textarea {
   flex: 1; resize: none; border: none; border-radius: 8px; background: #383a40; color: #f2f3f5;
@@ -310,7 +356,11 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
   .msg-side-time { display: none; }
   .msg.grouped { padding-left: 64px; }
   .chat-input { padding: 8px 10px; padding-bottom: max(8px, env(safe-area-inset-bottom)); }
-  .chat-input textarea { font-size: 16px; } /* stops iOS zoom */
+  .chat-input textarea, .edit-box textarea { font-size: 16px; } /* stops iOS zoom */
+  .edit-hint { display: none; }
+  .msg-actions { right: 10px; }
+  .msg-actions button { min-width: 40px; height: 36px; } /* bigger tap targets */
+  .typing { padding: 0 12px; }
 
   .user-panel { height: auto; min-height: 56px; padding-bottom: env(safe-area-inset-bottom); }
 

@@ -23,3 +23,8 @@ create policy "Anyone can read messages"
 
 -- Push new rows to browsers in realtime
 alter publication supabase_realtime add table public.messages;
+
+-- v2: edit / delete your own messages
+-- author_key = SHA-256 of the sender's browser token (safe to expose; the token itself is never stored)
+alter table public.messages add column if not exists author_key text;
+alter table public.messages add column if not exists edited_at timestamptz;

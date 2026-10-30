@@ -6,6 +6,9 @@ export type ChatMessage = {
   author: string;
   content: string;
   created_at: string;
+  edited_at: string | null;
+  /** SHA-256 of the sender's browser token; safe to expose, used to spot "my" messages */
+  author_key: string | null;
 };
 
 let client: SupabaseClient | null | undefined;
