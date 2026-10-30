@@ -116,9 +116,15 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
   grid-template-columns: repeat(auto-fit, minmax(200px, 300px)); /* tiles never grow huge */
 }
 .tile {
+  position: relative; font: inherit; color: inherit;
   background: #2b2d31; border-radius: 10px; aspect-ratio: 16 / 10; display: flex; flex-direction: column;
   align-items: center; justify-content: center; gap: 10px; border: 3px solid transparent;
-  transition: border-color .1s; min-width: 0; padding: 8px;
+  transition: border-color .1s, background .1s; min-width: 0; padding: 8px;
+}
+.tile:hover { background: #313338; }
+.volume-badge {
+  position: absolute; top: 8px; right: 8px; display: flex; align-items: center; gap: 4px;
+  font-size: 11px; font-weight: 600; color: #b5bac1; background: #1e1f22; padding: 3px 7px; border-radius: 10px;
 }
 .tile.speaking { border-color: #23a55a; }
 .avatar {
@@ -154,6 +160,56 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
   position: absolute; top: 70px; left: 50%; transform: translateX(-50%); z-index: 10;
   padding: 12px 20px; border: none; border-radius: 8px; background: #5865f2; color: white; font-weight: 600;
 }
+
+/* Settings / volume sheets */
+.sheet-backdrop {
+  position: fixed; inset: 0; z-index: 40; background: rgba(0, 0, 0, .6);
+  display: grid; place-items: center; padding: 16px; animation: fade-in .15s ease-out;
+}
+.sheet {
+  width: min(440px, 100%); max-height: 90dvh; overflow-y: auto; background: #313338; border-radius: 12px;
+  padding: 20px; box-shadow: 0 12px 40px rgba(0, 0, 0, .5);
+}
+.sheet-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.sheet-header h3 { margin: 0; font-size: 18px; color: #f2f3f5; }
+.sheet-close { background: none; border: none; color: #b5bac1; font-size: 18px; width: 36px; height: 36px; border-radius: 50%; }
+.sheet-close:hover { background: #404249; }
+.setting { padding: 14px 0; border-bottom: 1px solid #3f4147; display: flex; flex-direction: column; gap: 8px; }
+.setting:last-of-type { border-bottom: none; }
+.setting-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.setting-title { font-weight: 600; color: #f2f3f5; font-size: 15px; }
+.setting-desc { font-size: 13px; color: #949ba4; margin-top: 2px; }
+.select {
+  width: 100%; padding: 10px 12px; border-radius: 6px; border: none; background: #1e1f22; color: #f2f3f5;
+  font: inherit; font-size: 15px;
+}
+.meter { height: 8px; background: #1e1f22; border-radius: 4px; overflow: hidden; }
+.meter-fill { height: 100%; background: #23a55a; border-radius: 4px; transition: width .08s linear; }
+
+.switch { position: relative; flex-shrink: 0; width: 44px; height: 26px; cursor: pointer; }
+.switch input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: inherit; }
+.switch-track {
+  position: absolute; inset: 0; border-radius: 13px; background: #80848e; transition: background .15s; pointer-events: none;
+}
+.switch-track::after {
+  content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%;
+  background: white; transition: transform .15s;
+}
+.switch input:checked + .switch-track { background: #23a55a; }
+.switch input:checked + .switch-track::after { transform: translateX(18px); }
+.switch input:disabled + .switch-track { opacity: .5; }
+.switch input:focus-visible + .switch-track { outline: 2px solid #00a8fc; outline-offset: 2px; }
+
+.volume-row { display: flex; align-items: center; gap: 14px; }
+.slider { flex: 1; accent-color: #5865f2; height: 28px; }
+.volume-value { width: 48px; text-align: right; font-weight: 600; color: #f2f3f5; font-variant-numeric: tabular-nums; }
+.sheet-actions { display: flex; gap: 10px; padding-top: 8px; }
+.btn-secondary {
+  flex: 1; padding: 10px; border: none; border-radius: 6px; background: #4e5058; color: #f2f3f5; font-weight: 600;
+}
+.btn-secondary:hover:not(:disabled) { background: #6d6f78; }
+@keyframes fade-in { from { opacity: 0; } }
+@keyframes slide-up { from { transform: translateY(100%); } }
 
 /* ---------- Phones & small tablets ---------- */
 @media (max-width: 768px) {
@@ -203,6 +259,15 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
     background: #232428; border-top: 1px solid #1f2023;
   }
   .ctrl { width: 60px; height: 60px; padding: 0; border-radius: 50%; justify-content: center; }
+  .controls { gap: 16px; }
+
+  /* Sheets slide up from the bottom, like a native app */
+  .sheet-backdrop { place-items: end center; padding: 0; }
+  .sheet {
+    width: 100%; border-radius: 16px 16px 0 0; padding-bottom: max(20px, env(safe-area-inset-bottom));
+    animation: slide-up .2s ease-out;
+  }
+  .select { font-size: 16px; } /* stops iOS zoom */
   .ctrl-icon svg { width: 26px; height: 26px; }
   .ctrl-label { display: none; }
 
