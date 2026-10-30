@@ -1,15 +1,24 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { CHANNELS, MAX_PARTICIPANTS, type ChannelId } from "@/lib/channels";
+import {
+  CHANNELS,
+  MAX_PARTICIPANTS,
+  TEXT_CHANNELS,
+  type ChannelId,
+  type TextChannelId,
+} from "@/lib/channels";
 import VoiceRoom from "@/components/VoiceRoom";
+import TextChat from "@/components/TextChat";
 import { DeviceIcon } from "@/components/Icons";
 import { detectDevice } from "@/lib/device";
 
 type Occupancy = Record<string, { identity: string; name: string; device: string }[]>;
 type Session = { channel: ChannelId; token: string; url: string };
+/** What the main area shows: a text channel, or the voice call. */
+type MainView = "text" | "voice";
 /** Which panel is shown on phones (desktop always shows both). */
-type MobileView = "channels" | "call";
+type MobileView = "channels" | "main";
 
 export default function Home() {
   const [name, setName] = useState("");
@@ -18,6 +27,8 @@ export default function Home() {
   const [joining, setJoining] = useState<ChannelId | null>(null);
   const [error, setError] = useState("");
   const [occupancy, setOccupancy] = useState<Occupancy>({});
+  const [mainView, setMainView] = useState<MainView>("text");
+  const [textChannel, setTextChannel] = useState<TextChannelId>("general");
   const [mobileView, setMobileView] = useState<MobileView>("channels");
 
   useEffect(() => {
@@ -54,16 +65,27 @@ export default function Home() {
     setName(n);
   };
 
+  const openText = (id: TextChannelId) => {
+    setTextChannel(id);
+    setMainView("text");
+    setMobileView("main");
+  };
+
+  const showVoice = () => {
+    setMainView("voice");
+    setMobileView("main");
+  };
+
   const join = async (channel: ChannelId) => {
     if (session?.channel === channel) {
-      setMobileView("call"); // already in it, just show the call
+      showVoice(); // already in it, just show the call
       return;
     }
     if (joining) return;
     setError("");
     setJoining(channel);
     setSession(null); // leave current channel first
-    setMobileView("call");
+    showVoice();
     try {
       const res = await fetch("/api/token", {
         method: "POST",
@@ -75,6 +97,7 @@ export default function Home() {
       setSession({ channel, token: data.token, url: data.url });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to join");
+      setMainView("text");
       setMobileView("channels");
     } finally {
       setJoining(null);
@@ -84,6 +107,7 @@ export default function Home() {
 
   const leave = useCallback(() => {
     setSession(null);
+    setMainView("text");
     setMobileView("channels");
     setTimeout(refreshOccupancy, 500);
   }, [refreshOccupancy]);
@@ -94,7 +118,7 @@ export default function Home() {
         <form className="name-card" onSubmit={saveName}>
           <div className="name-logo">🎧</div>
           <h1>Welcome!</h1>
-          <p>Pick a display name to join the voice channels.</p>
+          <p>Pick a display name to chat and join the voice channels.</p>
           <input
             autoFocus
             maxLength={32}
@@ -113,9 +137,10 @@ export default function Home() {
   }
 
   const activeChannel = CHANNELS.find((c) => c.id === session?.channel);
+  const activeText = TEXT_CHANNELS.find((c) => c.id === textChannel)!;
 
   return (
-    <div className="app" data-mobile-view={mobileView}>
+    <div className="app" data-mobile-view={mobileView} data-main-view={mainView}>
       {error && (
         <button className="toast" onClick={() => setError("")}>
           {error} <span className="toast-close">✕</span>
@@ -125,6 +150,18 @@ export default function Home() {
       <aside className="sidebar">
         <div className="server-name">My Community</div>
         <div className="channel-list">
+          <div className="section-label">TEXT CHANNELS</div>
+          {TEXT_CHANNELS.map((c) => (
+            <button
+              key={c.id}
+              className={`channel ${mainView === "text" && textChannel === c.id ? "active" : ""}`}
+              onClick={() => openText(c.id)}
+            >
+              <span className="channel-icon hash">#</span>
+              <span className="channel-name">{c.name}</span>
+            </button>
+          ))}
+
           <div className="section-label">VOICE CHANNELS</div>
           {CHANNELS.map((c) => {
             const members = occupancy[c.id] ?? [];
@@ -157,9 +194,9 @@ export default function Home() {
           })}
         </div>
 
-        {/* Phones only: shows you're still in a call while browsing channels */}
+        {/* Shows you're still in a call while looking at something else */}
         {activeChannel && (
-          <button className="voice-bar" onClick={() => setMobileView("call")}>
+          <button className="voice-bar" onClick={showVoice}>
             <span className="voice-dot" />
             <span className="voice-bar-text">
               <strong>Voice Connected</strong>
@@ -187,17 +224,32 @@ export default function Home() {
       </aside>
 
       <main className="main">
-        {session && activeChannel ? (
-          <VoiceRoom
-            key={session.channel}
-            serverUrl={session.url}
-            token={session.token}
-            channelName={activeChannel.name}
-            onLeave={leave}
+        {mainView === "text" && (
+          <TextChat
+            key={textChannel}
+            channel={activeText}
+            userName={name}
+            onBack={() => setMobileView("channels")}
             onError={setError}
-            onShowChannels={() => setMobileView("channels")}
           />
-        ) : (
+        )}
+
+        {/* The call stays mounted (and audible) while you read a text channel */}
+        {session && activeChannel && (
+          <div className="voice-wrap" hidden={mainView !== "voice"}>
+            <VoiceRoom
+              key={session.channel}
+              serverUrl={session.url}
+              token={session.token}
+              channelName={activeChannel.name}
+              onLeave={leave}
+              onError={setError}
+              onShowChannels={() => setMobileView("channels")}
+            />
+          </div>
+        )}
+
+        {mainView === "voice" && !session && (
           <div className="empty-state">
             <h2>{joining ? "Connecting…" : "Pick a voice channel"}</h2>
             <p>Click a channel on the left to hop in. Up to {MAX_PARTICIPANTS} people per channel.</p>
