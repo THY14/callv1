@@ -6,7 +6,9 @@ const STORAGE_KEY = "authorToken";
 export function getAuthorToken(): string {
   let token = localStorage.getItem(STORAGE_KEY);
   if (!token) {
-    token = crypto.randomUUID() + crypto.randomUUID();
+    // getRandomValues works on older iPhones too (randomUUID needs iOS 15.4+)
+    const bytes = crypto.getRandomValues(new Uint8Array(32));
+    token = [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
     localStorage.setItem(STORAGE_KEY, token);
   }
   return token;

@@ -37,6 +37,7 @@ export default function TextChat({ channel, userName, onBack, onError }: Props) 
   const [editingId, setEditingId] = useState<number | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
   const [typers, setTypers] = useState<Record<string, Typer>>({});
+  const [live, setLive] = useState(false); // realtime connection is up
 
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -116,6 +117,7 @@ export default function TextChat({ channel, userName, onBack, onError }: Props) 
         });
       })
       .subscribe((status) => {
+        setLive(status === "SUBSCRIBED");
         // After a reconnect (e.g. phone was asleep), catch up on anything missed
         if (status === "SUBSCRIBED") loadLatest();
       });
@@ -129,6 +131,34 @@ export default function TextChat({ channel, userName, onBack, onError }: Props) 
     // onError is stable (state setter from the parent)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supabase, channel.id, addMessages, removeMessage]);
+
+  // iPhones freeze the live connection when you switch apps or lock the screen, and the page
+  // can't tell until the next heartbeat (up to ~25s+). When the page comes back, probe right away:
+  // two heartbeats a moment apart; if the first got no answer, the second forces a reconnect.
+  useEffect(() => {
+    if (!supabase) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const check = () => {
+      if (document.visibilityState !== "visible") return;
+      const rt = supabase.realtime;
+      if (!rt.isConnected()) {
+        rt.connect();
+        return;
+      }
+      rt.sendHeartbeat();
+      clearTimeout(timer);
+      timer = setTimeout(() => rt.sendHeartbeat(), 2500);
+    };
+    document.addEventListener("visibilitychange", check);
+    window.addEventListener("pageshow", check);
+    window.addEventListener("online", check);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener("visibilitychange", check);
+      window.removeEventListener("pageshow", check);
+      window.removeEventListener("online", check);
+    };
+  }, [supabase]);
 
   // Expire typing indicators of people who went quiet
   useEffect(() => {
@@ -145,7 +175,7 @@ export default function TextChat({ channel, userName, onBack, onError }: Props) 
 
   const sendTyping = (stop = false) => {
     const ch = realtimeRef.current;
-    if (!ch) return;
+    if (!ch || !live) return; // not connected: skip (typing signals are throwaway anyway)
     const now = Date.now();
     if (!stop && now - lastTypingSent.current < TYPING_SEND_EVERY_MS) return;
     lastTypingSent.current = stop ? 0 : now;
@@ -283,6 +313,7 @@ export default function TextChat({ channel, userName, onBack, onError }: Props) 
         <span className="hash">#</span>
         <div className="room-title">
           <h2>{channel.name}</h2>
+          {supabase && !live && !loading && <span className="status warn">Connecting…</span>}
         </div>
       </header>
 
