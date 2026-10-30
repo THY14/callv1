@@ -2,12 +2,15 @@ import { NextResponse } from "next/server";
 import { AccessToken } from "livekit-server-sdk";
 import { randomUUID } from "crypto";
 import { MAX_PARTICIPANTS, isChannelId } from "@/lib/channels";
+import { isDeviceType } from "@/lib/device";
 import { getLiveKitConfig, getRoomService, listParticipantsSafe } from "@/lib/livekit";
 
 export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
   const room = String(body.room ?? "");
   const name = String(body.name ?? "").trim();
+  // Only accept known values, so clients can't put arbitrary text in everyone's UI
+  const device = isDeviceType(body.device) ? body.device : "desktop";
 
   if (!isChannelId(room)) {
     return NextResponse.json({ error: "Unknown channel" }, { status: 400 });
@@ -32,6 +35,7 @@ export async function POST(req: Request) {
       identity: randomUUID(), // unique per connection, so two people can share a display name
       name,
       ttl: "2h",
+      attributes: { device }, // visible to everyone in the room
     });
     at.addGrant({ roomJoin: true, room, canPublish: true, canSubscribe: true, canPublishData: true });
 

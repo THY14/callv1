@@ -57,6 +57,38 @@ export const VolumeIcon = ({ size = 22 }: P) => (
   </svg>
 );
 
+export const PhoneIcon = ({ size = 22 }: P) => (
+  <svg {...base(size)}>
+    <rect x="6" y="2" width="12" height="20" rx="2.5" />
+    <path d="M11 18h2" />
+  </svg>
+);
+
+export const TabletIcon = ({ size = 22 }: P) => (
+  <svg {...base(size)}>
+    <rect x="4" y="2" width="16" height="20" rx="2.5" />
+    <path d="M11 18h2" />
+  </svg>
+);
+
+export const DesktopIcon = ({ size = 22 }: P) => (
+  <svg {...base(size)}>
+    <rect x="2" y="4" width="20" height="13" rx="2" />
+    <path d="M8 21h8M12 17v4" />
+  </svg>
+);
+
+/** Small grey phone/tablet/desktop icon shown next to a person's name. */
+export const DeviceIcon = ({ device, size = 14 }: { device?: string; size?: number }) => {
+  const label = device === "mobile" ? "On phone" : device === "tablet" ? "On tablet" : "On desktop";
+  const Icon = device === "mobile" ? PhoneIcon : device === "tablet" ? TabletIcon : DesktopIcon;
+  return (
+    <span className="device-icon" title={label} aria-label={label}>
+      <Icon size={size} />
+    </span>
+  );
+};
+
 export const HangUpIcon = ({ size = 24 }: P) => (
   <svg {...base(size)} fill="currentColor" stroke="none">
     <path d="M12 9c-2.6 0-5.1.5-7.4 1.4-.9.4-1.4 1.2-1.4 2.2v2.1c0 .8.7 1.4 1.5 1.3l3.2-.5c.7-.1 1.2-.7 1.2-1.4v-1.7c1.9-.5 3.9-.5 5.8 0v1.7c0 .7.5 1.3 1.2 1.4l3.2.5c.8.1 1.5-.5 1.5-1.3v-2.1c0-1-.6-1.8-1.4-2.2C17.1 9.5 14.6 9 12 9z" />

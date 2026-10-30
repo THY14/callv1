@@ -141,6 +141,8 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 .tile-name { display: flex; gap: 4px; max-width: 100%; color: #f2f3f5; font-weight: 600; }
 .tile-name-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .you { color: #949ba4; font-weight: 400; flex-shrink: 0; }
+.tile-name { align-items: center; }
+.device-icon { display: inline-flex; color: #80848e; flex-shrink: 0; }
 
 .controls {
   display: flex; justify-content: center; gap: 12px; padding: 16px; background: #1e1f22; flex-shrink: 0;

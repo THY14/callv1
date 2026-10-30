@@ -3,8 +3,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { CHANNELS, MAX_PARTICIPANTS, type ChannelId } from "@/lib/channels";
 import VoiceRoom from "@/components/VoiceRoom";
+import { DeviceIcon } from "@/components/Icons";
+import { detectDevice } from "@/lib/device";
 
-type Occupancy = Record<string, { identity: string; name: string }[]>;
+type Occupancy = Record<string, { identity: string; name: string; device: string }[]>;
 type Session = { channel: ChannelId; token: string; url: string };
 /** Which panel is shown on phones (desktop always shows both). */
 type MobileView = "channels" | "call";
@@ -66,7 +68,7 @@ export default function Home() {
       const res = await fetch("/api/token", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ room: channel, name }),
+        body: JSON.stringify({ room: channel, name, device: detectDevice() }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to join");
@@ -146,6 +148,7 @@ export default function Home() {
                     <li key={m.identity}>
                       <span className="mini-avatar">{m.name.charAt(0).toUpperCase()}</span>
                       <span className="member-name">{m.name}</span>
+                      <DeviceIcon device={m.device} size={13} />
                     </li>
                   ))}
                 </ul>

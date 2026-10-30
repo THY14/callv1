@@ -8,6 +8,7 @@ import {
   useConnectionState,
   useIsSpeaking,
   useLocalParticipant,
+  useParticipantAttribute,
   useParticipants,
   useRoomContext,
   useTrackMutedIndicator,
@@ -17,6 +18,7 @@ import { ConnectionState, Track, type Participant, type RemoteParticipant } from
 import { MAX_PARTICIPANTS } from "@/lib/channels";
 import { prefs } from "@/lib/prefs";
 import {
+  DeviceIcon,
   HangUpIcon,
   HeadphonesIcon,
   HeadphonesOffIcon,
@@ -204,6 +206,7 @@ function ParticipantTile({
 }) {
   const speaking = useIsSpeaking(participant);
   const { isMuted } = useTrackMutedIndicator({ participant, source: Track.Source.Microphone });
+  const device = useParticipantAttribute("device", { participant });
   const name = participant.name || "Unknown";
 
   // Apply this person's saved volume (LiveKit also re-applies it when their audio arrives)
@@ -228,6 +231,7 @@ function ParticipantTile({
       <div className="tile-name">
         <span className="tile-name-text">{name}</span>
         {participant.isLocal && <span className="you">(you)</span>}
+        <DeviceIcon device={device} />
       </div>
       {!participant.isLocal && volume !== 1 && (
         <span className="volume-badge">
