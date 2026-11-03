@@ -27,3 +27,9 @@ export function roomNameForCode(code: string): string {
 export function inviteLink(code: string): string {
   return `${window.location.origin}/?room=${code}`;
 }
+
+/** Formats what someone is typing into a code box: "k7p4" -> "K7P-4" */
+export function formatCodeInput(raw: string): string {
+  const code = normalizeCode(raw).slice(0, CODE_LENGTH);
+  return code.length > 3 ? formatCode(code) : code;
+}

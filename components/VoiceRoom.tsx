@@ -22,6 +22,8 @@ import {
   DeviceIcon,
   HangUpIcon,
   HeadphonesIcon,
+  ChevronIcon,
+  CopyIcon,
   HeadphonesOffIcon,
   LinkIcon,
   MicIcon,
@@ -30,6 +32,8 @@ import {
   VolumeIcon,
 } from "@/components/Icons";
 import { SettingsSheet, VolumeSheet } from "@/components/AudioSheets";
+import { Elapsed } from "@/components/Elapsed";
+import { formatCode } from "@/lib/rooms";
 
 /**
  * Creates the call's Room. The page owns it (not <LiveKitRoom>), so the sidebar and the
@@ -74,14 +78,15 @@ type Props = {
   onError: (msg: string) => void;
   onMicFailure: () => void;
   onShowChannels: () => void;
-  /** Personal rooms get an Invite button in the header */
+  /** When the call started, for the timer */
+  startedAt: number;
+  /** Personal rooms show their code (tap to copy) and an Invite button in the header */
+  roomCode?: string;
+  onCopyCode?: () => void;
   onInvite?: () => void;
 };
 
 export default function VoiceRoom({ room, serverUrl, token, onMicFailure, onLeave, onError, ...rest }: Props) {
-  // Only the starting value matters; later changes are applied by useMicSync
-  const [startWithMic] = useState(() => !rest.voice.muted && !rest.voice.deafened);
-
   return (
     <LiveKitRoom
       className="room"
@@ -89,7 +94,8 @@ export default function VoiceRoom({ room, serverUrl, token, onMicFailure, onLeav
       serverUrl={serverUrl}
       token={token}
       connect
-      audio={startWithMic}
+      // The mic is turned on by useMicSync once connected, so only one place ever publishes it
+      audio={false}
       video={false}
       onDisconnected={onLeave}
       onError={(e) => onError(e.message)}
@@ -113,6 +119,9 @@ function RoomView({
   onOpenSettings,
   onCloseSettings,
   onShowChannels,
+  startedAt,
+  roomCode,
+  onCopyCode,
   onInvite,
 }: RoomViewProps) {
   const [sheet, setSheet] = useState<Sheet>(null);
@@ -156,7 +165,14 @@ function RoomView({
 
   return (
     <>
-      <RoomHeader channelName={channelName} onShowChannels={onShowChannels} onInvite={onInvite} />
+      <RoomHeader
+        channelName={channelName}
+        startedAt={startedAt}
+        roomCode={roomCode}
+        onCopyCode={onCopyCode}
+        onInvite={onInvite}
+        onShowChannels={onShowChannels}
+      />
       <ParticipantGrid
         volumes={volumes}
         selfDeafened={voice.deafened}
@@ -190,28 +206,40 @@ function RoomView({
   );
 }
 
-/** Turns the mic on/off when mute or deafen changes (the starting state is set on join). */
+/**
+ * Keeps the real mic in line with mute/deafen. Only acts while connected: publishing earlier
+ * waits for the connection and fails after 15s ("publishing rejected as engine not connected").
+ */
 function useMicSync(micOn: boolean) {
-  const { localParticipant } = useLocalParticipant();
-  const first = useRef(true);
+  const { localParticipant, isMicrophoneEnabled } = useLocalParticipant();
+  const state = useConnectionState();
+  const busy = useRef(false);
   useEffect(() => {
-    if (first.current) {
-      first.current = false;
-      return;
-    }
-    localParticipant.setMicrophoneEnabled(micOn).catch(() => {});
-  }, [micOn, localParticipant]);
+    if (state !== ConnectionState.Connected || busy.current || micOn === isMicrophoneEnabled) return;
+    busy.current = true;
+    // When it finishes, isMicrophoneEnabled changes and this re-checks (in case you toggled meanwhile).
+    // On failure (e.g. mic permission denied) the page mutes you via onMicFailure.
+    localParticipant
+      .setMicrophoneEnabled(micOn)
+      .catch(() => {})
+      .finally(() => {
+        busy.current = false;
+      });
+  }, [state, micOn, isMicrophoneEnabled, localParticipant]);
 }
 
-/** Lets everyone see the deafened icon. The starting value is already in the join token. */
+/** Lets everyone see the deafened icon, by syncing it to our participant attributes. */
 function useBroadcastDeafened(deafened: boolean, token: string) {
-  const first = useRef(true);
+  const { localParticipant } = useLocalParticipant();
+  const state = useConnectionState();
+  const onServer = useParticipantAttribute("deafened", { participant: localParticipant }) === "1";
+  const lastSent = useRef<boolean | null>(null);
   const queue = useRef<Promise<unknown>>(Promise.resolve());
   useEffect(() => {
-    if (first.current) {
-      first.current = false;
-      return;
-    }
+    if (state !== ConnectionState.Connected) return;
+    lastSent.current ??= onServer; // starting value came from the join token
+    if (lastSent.current === deafened) return;
+    lastSent.current = deafened;
     // Chained, so quick toggles can't arrive at the server out of order
     queue.current = queue.current
       .then(() =>
@@ -222,7 +250,7 @@ function useBroadcastDeafened(deafened: boolean, token: string) {
         }),
       )
       .catch(() => {});
-  }, [deafened, token]);
+  }, [state, deafened, onServer, token]);
 }
 
 /** Join/leave chimes, like Discord. */
@@ -259,12 +287,18 @@ function useCallSounds(deafened: boolean) {
 
 function RoomHeader({
   channelName,
-  onShowChannels,
+  startedAt,
+  roomCode,
+  onCopyCode,
   onInvite,
+  onShowChannels,
 }: {
   channelName: string;
-  onShowChannels: () => void;
+  startedAt: number;
+  roomCode?: string;
+  onCopyCode?: () => void;
   onInvite?: () => void;
+  onShowChannels: () => void;
 }) {
   const state = useConnectionState();
   const participants = useParticipants();
@@ -276,20 +310,30 @@ function RoomHeader({
         : "Connecting…";
   return (
     <header className="room-header">
-      <button className="back-btn mobile-only" onClick={onShowChannels} aria-label="Show channels">
-        ‹
+      <button className="back-btn mobile-only" onClick={onShowChannels} aria-label="Back">
+        <ChevronIcon size={22} />
       </button>
-      <span className="channel-icon">🔊</span>
+      <span className="header-icon">
+        <VolumeIcon size={20} />
+      </span>
       <div className="room-title">
         <h2>{channelName}</h2>
-        <span className={`status ${state === ConnectionState.Connected ? "ok" : "warn"}`}>{label}</span>
+        <span className={`status ${state === ConnectionState.Connected ? "ok" : "warn"}`}>
+          {label}
+          {state === ConnectionState.Connected && <Elapsed since={startedAt} className="status-time" />}
+        </span>
       </div>
       <span className="room-count">
         {participants.length}/{MAX_PARTICIPANTS}
       </span>
+      {roomCode && onCopyCode && (
+        <button className="code-chip" onClick={onCopyCode} title="Copy room code">
+          {formatCode(roomCode)} <CopyIcon size={14} />
+        </button>
+      )}
       {onInvite && (
-        <button className="invite-btn" onClick={onInvite} title="Copy invite link">
-          <LinkIcon size={16} /> Invite
+        <button className="invite-btn" onClick={onInvite} title="Copy invite link" aria-label="Copy invite link">
+          <LinkIcon size={16} /> <span className="invite-label">Invite</span>
         </button>
       )}
     </header>

@@ -101,3 +101,60 @@ export const LinkIcon = ({ size = 18 }: P) => (
     <path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7" />
   </svg>
 );
+
+export const CopyIcon = ({ size = 18 }: P) => (
+  <svg {...base(size)}>
+    <rect x="9" y="9" width="12" height="12" rx="2" />
+    <path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1" />
+  </svg>
+);
+
+export const PlusIcon = ({ size = 18 }: P) => (
+  <svg {...base(size)}>
+    <path d="M12 5v14M5 12h14" />
+  </svg>
+);
+
+export const CallIcon = ({ size = 20 }: P) => (
+  <svg {...base(size)}>
+    <path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z" />
+  </svg>
+);
+
+export const ChatIcon = ({ size = 20 }: P) => (
+  <svg {...base(size)}>
+    <path d="M21 12a8 8 0 0 1-11.8 7L4 20.5l1.5-4.6A8 8 0 1 1 21 12z" />
+  </svg>
+);
+
+export const HomeIcon = ({ size = 20 }: P) => (
+  <svg {...base(size)}>
+    <path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z" />
+  </svg>
+);
+
+export const HashIcon = ({ size = 20 }: P) => (
+  <svg {...base(size)}>
+    <path d="M5 9h15M4 15h15M10 3 8 21M16 3l-2 18" />
+  </svg>
+);
+
+export const ShareIcon = ({ size = 18 }: P) => (
+  <svg {...base(size)}>
+    <path d="M12 3v13M7 8l5-5 5 5" />
+    <path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6" />
+  </svg>
+);
+
+export const KeypadIcon = ({ size = 20 }: P) => (
+  <svg {...base(size)}>
+    <rect x="2" y="5" width="20" height="14" rx="2.5" />
+    <path d="M6 9h.01M10 9h.01M14 9h.01M18 9h.01M6 13h.01M18 13h.01M9 15h6" />
+  </svg>
+);
+
+export const ChevronIcon = ({ size = 18 }: P) => (
+  <svg {...base(size)}>
+    <path d="m9 6 6 6-6 6" />
+  </svg>
+);

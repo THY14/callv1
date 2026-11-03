@@ -5,6 +5,7 @@ import type { RealtimeChannel } from "@supabase/supabase-js";
 import { MAX_MESSAGE_LENGTH } from "@/lib/channels";
 import { getSupabase, type ChatMessage } from "@/lib/supabase";
 import { getAuthorKey, getAuthorToken } from "@/lib/author";
+import { ChevronIcon, HashIcon } from "@/components/Icons";
 
 const PAGE_SIZE = 50;
 const GROUP_WINDOW_MS = 5 * 60 * 1000; // same author within 5 min = one block, like Discord
@@ -307,10 +308,12 @@ export default function TextChat({ channel, userName, onBack, onError }: Props) 
   return (
     <div className="chat">
       <header className="room-header">
-        <button className="back-btn mobile-only" onClick={onBack} aria-label="Show channels">
-          ‹
+        <button className="back-btn mobile-only" onClick={onBack} aria-label="Back">
+          <ChevronIcon size={22} />
         </button>
-        <span className="hash">#</span>
+        <span className="header-icon">
+          <HashIcon size={20} />
+        </span>
         <div className="room-title">
           <h2>{channel.name}</h2>
           {supabase && !live && !loading && <span className="status warn">Connecting…</span>}

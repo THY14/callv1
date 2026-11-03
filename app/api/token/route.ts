@@ -3,9 +3,9 @@ import { AccessToken } from "livekit-server-sdk";
 import { randomUUID } from "crypto";
 import { CHANNELS, MAX_PARTICIPANTS, isChannelId } from "@/lib/channels";
 import { isDeviceType } from "@/lib/device";
-import { getLiveKitConfig, getRoomService, listParticipantsSafe } from "@/lib/livekit";
+import { callStartedAt, getLiveKitConfig, getRoomService, listParticipantsSafe } from "@/lib/livekit";
 import { isRoomCode, normalizeCode, roomNameForCode } from "@/lib/rooms";
-import { ownerCode } from "@/lib/room-codes";
+import { authorKeyFrom, findRoomByCode, setOwnerName } from "@/lib/room-codes";
 
 export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
@@ -21,48 +21,35 @@ export async function POST(req: Request) {
 
   try {
     const { url, apiKey, apiSecret } = getLiveKitConfig();
-    const rooms = getRoomService();
 
     let room: string; // LiveKit room name
     let title: string; // what the UI calls it
-    let canOpen: boolean; // may start the room if nobody is in it
 
     if (isChannelId(target)) {
       room = target;
       title = CHANNELS.find((c) => c.id === target)!.name;
-      canOpen = true;
     } else if (isRoomCode(normalizeCode(target))) {
-      const code = normalizeCode(target);
-      room = roomNameForCode(code);
-      // Only the owner can open their room, so each account has one room (no making rooms from random codes)
-      canOpen = ownerCode(body.authorToken) === code;
-      title = canOpen ? `${name}'s room` : "";
+      // Anyone with the code can join, owner there or not. Only codes made with "Create room" work.
+      const record = await findRoomByCode(normalizeCode(target));
+      if (!record) {
+        return NextResponse.json({ error: "No room with that code. Check it and try again." }, { status: 404 });
+      }
+      room = roomNameForCode(record.code);
+      const isOwner = authorKeyFrom(body.authorToken) === record.owner_key;
+      // Keep the room's title in step if the owner changed their display name
+      if (isOwner && record.owner_name !== name) await setOwnerName(record.code, name).catch(() => {});
+      title = `${isOwner ? name : record.owner_name}'s room`;
     } else {
       return NextResponse.json({ error: "Unknown channel or room code" }, { status: 400 });
     }
 
-    if (canOpen) {
-      // emptyTimeout only closes the room once everyone has left; calls themselves have no time limit
-      const created = await rooms
-        .createRoom({ name: room, maxParticipants: MAX_PARTICIPANTS, emptyTimeout: 60, metadata: title })
-        .catch(() => null);
-      // Keep the title in sync if the owner changed their name since the room was made
-      if (created && created.metadata !== title && room !== target) {
-        await rooms.updateRoomMetadata(room, title).catch(() => {});
-      }
-    }
+    // Returns the existing room if the call is already running. emptyTimeout only closes the
+    // room once nobody is in it; calls themselves have no time limit.
+    await getRoomService()
+      .createRoom({ name: room, maxParticipants: MAX_PARTICIPANTS, emptyTimeout: 60 })
+      .catch(() => null);
 
     const participants = await listParticipantsSafe(room);
-    if (!canOpen) {
-      if (participants.length === 0) {
-        return NextResponse.json(
-          { error: "This room isn't open right now. The owner has to join first." },
-          { status: 404 },
-        );
-      }
-      const [info] = await rooms.listRooms([room]).catch(() => []);
-      title = info?.metadata || "Private room";
-    }
     if (participants.length >= MAX_PARTICIPANTS) {
       return NextResponse.json({ error: `Room is full (${MAX_PARTICIPANTS}/${MAX_PARTICIPANTS})` }, { status: 403 });
     }
@@ -76,9 +63,14 @@ export async function POST(req: Request) {
     });
     at.addGrant({ roomJoin: true, room, canPublish: true, canSubscribe: true, canPublishData: true });
 
-    return NextResponse.json({ token: await at.toJwt(), url, title });
+    return NextResponse.json({
+      token: await at.toJwt(),
+      url,
+      title,
+      startedAt: callStartedAt(participants) ?? Date.now(), // for the call timer; nobody in yet = starts now
+    });
   } catch (err) {
     console.error(err);
-    return NextResponse.json({ error: "Could not create token. Is the LiveKit server running?" }, { status: 500 });
+    return NextResponse.json({ error: "Could not join. Please try again." }, { status: 500 });
   }
 }

@@ -28,3 +28,14 @@ alter publication supabase_realtime add table public.messages;
 -- author_key = SHA-256 of the sender's browser token (safe to expose; the token itself is never stored)
 alter table public.messages add column if not exists author_key text;
 alter table public.messages add column if not exists edited_at timestamptz;
+
+
+-- v3: call rooms. Each browser ("account") can create one room with a share code.
+-- Only the server (secret key) reads/writes this table, so codes are never listed publicly.
+create table if not exists public.rooms (
+  code text primary key check (code ~ '^[A-Z0-9]{6}$'),
+  owner_key text not null unique, -- SHA-256 of the owner's browser token (one room per account)
+  owner_name text not null check (char_length(owner_name) between 1 and 32),
+  created_at timestamptz not null default now()
+);
+alter table public.rooms enable row level security; -- no policies = no browser access

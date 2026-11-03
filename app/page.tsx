@@ -3,75 +3,81 @@
 import { useCallback, useEffect, useState } from "react";
 import { RoomContext } from "@livekit/components-react";
 import type { Room } from "livekit-client";
-import {
-  CHANNELS,
-  MAX_PARTICIPANTS,
-  TEXT_CHANNELS,
-  type ChannelId,
-  type TextChannelId,
-} from "@/lib/channels";
+import { CHANNELS, MAX_PARTICIPANTS, TEXT_CHANNELS, type TextChannelId } from "@/lib/channels";
+import { NO_ONE, type Occupancy, type Target } from "@/lib/calls";
 import VoiceRoom, { createVoiceRoom, type VoiceState } from "@/components/VoiceRoom";
 import TextChat from "@/components/TextChat";
+import Home from "@/components/Home";
 import { LobbySettingsSheet } from "@/components/AudioSheets";
 import { LiveMemberList, MemberList, SelfAvatar, type Member } from "@/components/VoiceMembers";
+import { Elapsed } from "@/components/Elapsed";
 import {
+  CallIcon,
+  ChatIcon,
+  ChevronIcon,
+  CopyIcon,
   HangUpIcon,
+  HashIcon,
   HeadphonesIcon,
   HeadphonesOffIcon,
-  LinkIcon,
+  HomeIcon,
   MicIcon,
   MicOffIcon,
+  PlusIcon,
   SettingsIcon,
+  VolumeIcon,
 } from "@/components/Icons";
 import { detectDevice } from "@/lib/device";
 import { playSound } from "@/lib/sounds";
 import { getAuthorToken } from "@/lib/author";
 import { formatCode, inviteLink, isRoomCode, normalizeCode } from "@/lib/rooms";
 
-/** Members per public channel id or personal room code */
-type Occupancy = Record<string, Member[]>;
-/** Where to join: a public channel, or someone's personal room */
-type Target = { kind: "channel"; id: ChannelId } | { kind: "room"; code: string };
 /** key = channel id or room code */
-type Session = { key: string; kind: Target["kind"]; title: string; token: string; url: string; room: Room };
-/** What the main area shows: a text channel, or the voice call / voice lobby. */
-type MainView = "text" | "voice";
-/** Which panel is shown on phones (desktop always shows both). */
-type MobileView = "channels" | "main";
+type Session = {
+  key: string;
+  kind: Target["kind"];
+  title: string;
+  token: string;
+  url: string;
+  room: Room;
+  startedAt: number;
+};
+/**
+ * What the main area shows. On phones there is no sidebar: "home" and "chats" are the two tabs,
+ * and "call" / "text" are full-screen pages with a back button.
+ */
+type MainView = "home" | "call" | "text" | "chats";
 
 const targetKey = (t: Target) => (t.kind === "channel" ? t.id : t.code);
 
-export default function Home() {
+export default function Page() {
   const [name, setName] = useState("");
   const [nameDraft, setNameDraft] = useState("");
   const [session, setSession] = useState<Session | null>(null);
   const [joining, setJoining] = useState<string | null>(null);
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState(""); // friendly green toast, e.g. "Invite link copied"
+  const [notice, setNotice] = useState(""); // friendly green toast, e.g. "Code copied"
   const [occupancy, setOccupancy] = useState<Occupancy>({});
-  const [mainView, setMainView] = useState<MainView>("voice");
+  const [mainView, setMainView] = useState<MainView>("home");
   const [textChannel, setTextChannel] = useState<TextChannelId>("general");
-  const [mobileView, setMobileView] = useState<MobileView>("channels");
   // Like Discord, you can mute/deafen before joining and it carries into the call
   const [muted, setMuted] = useState(false);
   const [deafened, setDeafened] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [myCode, setMyCode] = useState<string | null>(null);
+  const [myRoomChecked, setMyRoomChecked] = useState(false); // so "Create room" doesn't flash for owners
+  const [creating, setCreating] = useState(false);
   const [inviteCode, setInviteCode] = useState<string | null>(null); // from a ?room= link
-  const [codeDraft, setCodeDraft] = useState("");
 
   useEffect(() => {
     const saved = localStorage.getItem("displayName");
     if (saved) setName(saved);
 
-    // Opened from an invite link: show the invite straight away
+    // Opened from an invite link: the home screen shows the invite at the top
     const code = normalizeCode(new URLSearchParams(window.location.search).get("room") ?? "");
-    if (isRoomCode(code)) {
-      setInviteCode(code);
-      setMobileView("main");
-    }
+    if (isRoomCode(code)) setInviteCode(code);
 
-    // Every browser owns exactly one room; ask the server for its code
+    // Have we created a room before? (each account can have one)
     fetch("/api/my-room", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -79,7 +85,8 @@ export default function Home() {
     })
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => data?.code && setMyCode(data.code))
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setMyRoomChecked(true));
   }, []);
 
   // Personal rooms we want member lists for (public channels are always included)
@@ -93,7 +100,7 @@ export default function Home() {
     } catch {}
   }, [watchCodes]);
 
-  // Poll who is in each channel so the sidebar stays live
+  // Poll who is in each channel so the lists stay live
   useEffect(() => {
     refreshOccupancy();
     const t = setInterval(refreshOccupancy, 4000);
@@ -108,7 +115,7 @@ export default function Home() {
   }, [error]);
   useEffect(() => {
     if (!notice) return;
-    const t = setTimeout(() => setNotice(""), 3000);
+    const t = setTimeout(() => setNotice(""), 2500);
     return () => clearTimeout(t);
   }, [notice]);
 
@@ -155,28 +162,28 @@ export default function Home() {
     setName(n);
   };
 
+  const changeName = () => {
+    setSession(null);
+    localStorage.removeItem("displayName");
+    setNameDraft(name);
+    setName("");
+  };
+
   const openText = (id: TextChannelId) => {
     setTextChannel(id);
     setMainView("text");
-    setMobileView("main");
-  };
-
-  const showVoice = () => {
-    setMainView("voice");
-    setMobileView("main");
   };
 
   const join = async (target: Target) => {
     const key = targetKey(target);
     if (session?.key === key) {
-      showVoice(); // already in it, just show the call
+      setMainView("call"); // already in it, just show the call
       return;
     }
     if (joining) return;
     setError("");
     setJoining(key);
-    setSession(null); // leave current channel first
-    showVoice();
+    setSession(null); // leave the current call first
     try {
       const res = await fetch("/api/token", {
         method: "POST",
@@ -186,12 +193,21 @@ export default function Home() {
           name,
           device: detectDevice(),
           deafened,
-          authorToken: getAuthorToken(), // proves you own your room, so you can open it
+          authorToken: getAuthorToken(), // lets the server recognise the room's owner
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to join");
-      setSession({ key, kind: target.kind, title: data.title, token: data.token, url: data.url, room: createVoiceRoom() });
+      setSession({
+        key,
+        kind: target.kind,
+        title: data.title,
+        token: data.token,
+        url: data.url,
+        room: createVoiceRoom(),
+        startedAt: data.startedAt ?? Date.now(),
+      });
+      setMainView("call");
       if (key === inviteCode) {
         // Invite used: tidy the address bar so a reload doesn't show it again
         setInviteCode(null);
@@ -199,22 +215,40 @@ export default function Home() {
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to join");
-      if (!inviteCode) setMobileView("channels");
     } finally {
       setJoining(null);
       setTimeout(refreshOccupancy, 1000);
     }
   };
 
-  const joinByCode = (e: React.FormEvent) => {
-    e.preventDefault();
-    const code = normalizeCode(codeDraft);
-    if (!isRoomCode(code)) {
-      setError("Room codes have 6 letters and numbers, like K7P-4QX.");
-      return;
+  const createRoom = async () => {
+    if (creating) return;
+    setCreating(true);
+    try {
+      const res = await fetch("/api/my-room", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ authorToken: getAuthorToken(), name, create: true }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Could not create your room");
+      setMyCode(data.code);
+      setNotice(`Room created! Your code is ${formatCode(data.code)}`);
+      setMainView("home"); // the home screen shows the new room with its code
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not create your room");
+    } finally {
+      setCreating(false);
     }
-    setCodeDraft("");
-    join({ kind: "room", code });
+  };
+
+  const copyCode = async (code: string) => {
+    try {
+      await navigator.clipboard.writeText(formatCode(code));
+      setNotice(`Code ${formatCode(code)} copied`);
+    } catch {
+      setNotice(`Room code: ${formatCode(code)}`); // clipboard blocked: at least show it
+    }
   };
 
   /** Phones: open the share sheet (Telegram etc). Desktop: copy the link. */
@@ -222,7 +256,7 @@ export default function Home() {
     const url = inviteLink(code);
     if (navigator.share && window.matchMedia("(pointer: coarse)").matches) {
       try {
-        await navigator.share({ title: "Join my voice room", text: `Room code: ${formatCode(code)}`, url });
+        await navigator.share({ title: "Join my call", text: `Join my call. Room code: ${formatCode(code)}`, url });
         return;
       } catch (err) {
         if (err instanceof DOMException && err.name === "AbortError") return; // they closed the sheet
@@ -230,16 +264,16 @@ export default function Home() {
     }
     try {
       await navigator.clipboard.writeText(url);
-      setNotice(`Invite link copied (room ${formatCode(code)})`);
+      setNotice("Invite link copied");
     } catch {
-      setNotice(`Your room code: ${formatCode(code)}`);
+      setNotice(`Room code: ${formatCode(code)}`);
     }
   };
 
   const leave = useCallback(() => {
     playSound("leave");
     setSession(null);
-    setMobileView("channels");
+    setMainView((v) => (v === "call" ? "home" : v));
     setTimeout(refreshOccupancy, 500);
   }, [refreshOccupancy]);
 
@@ -252,12 +286,14 @@ export default function Home() {
     return (
       <div className="name-screen">
         <form className="name-card" onSubmit={saveName}>
-          <div className="name-logo">🎧</div>
-          <h1>Welcome!</h1>
+          <div className="name-logo">
+            <CallIcon size={30} />
+          </div>
+          <h1>{inviteCode ? "You're invited to a call" : "Welcome"}</h1>
           <p>
             {inviteCode
-              ? `Pick a display name to join room ${formatCode(inviteCode)}.`
-              : "Pick a display name to hop into the voice channels."}
+              ? `Pick a name, then join room ${formatCode(inviteCode)}.`
+              : "Pick a display name so friends know who's talking."}
           </p>
           <input
             autoFocus
@@ -278,11 +314,13 @@ export default function Home() {
 
   const activeText = TEXT_CHANNELS.find((c) => c.id === textChannel)!;
   const micOff = muted || deafened;
+  const showCall = () => setMainView("call");
+  const hangUp = () => session?.room.disconnect();
 
   return (
     // Lets the sidebar read the live call (speaking rings etc.) while you're in one
     <RoomContext.Provider value={session?.room}>
-      <div className="app" data-mobile-view={mobileView} data-main-view={mainView}>
+      <div className="app" data-main-view={mainView} data-in-call={session ? "" : undefined}>
         {error ? (
           <button className="toast" onClick={() => setError("")}>
             {error} <span className="toast-close">✕</span>
@@ -290,59 +328,65 @@ export default function Home() {
         ) : (
           notice && (
             <button className="toast ok" onClick={() => setNotice("")}>
-              {notice} <span className="toast-close">✕</span>
+              {notice}
             </button>
           )
         )}
 
+        {/* Desktop only (hidden on phones, which use the bottom tabs instead) */}
         <aside className="sidebar">
-          <div className="server-name">My Community</div>
+          <div className="server-name">
+            <span className="brand-logo">
+              <CallIcon size={16} />
+            </span>
+            Calls
+          </div>
           <div className="channel-list">
+            <button className={`channel nav ${mainView === "home" ? "active" : ""}`} onClick={() => setMainView("home")}>
+              <span className="channel-icon">
+                <HomeIcon size={18} />
+              </span>
+              <span className="channel-name">Home</span>
+            </button>
+
             <div className="section-label">ROOMS</div>
-            {myCode && (
+            {myCode ? (
               <RoomEntry
                 label="My room"
                 code={myCode}
-                members={occupancy[myCode] ?? []}
+                members={(occupancy[myCode] ?? NO_ONE).members}
                 active={session?.key === myCode}
                 joining={joining}
                 deafened={deafened}
                 onJoin={() => join({ kind: "room", code: myCode })}
-                onShare={() => shareRoom(myCode)}
+                onCopy={() => copyCode(myCode)}
               />
+            ) : (
+              myRoomChecked && (
+                <button className="channel create-room" onClick={createRoom} disabled={creating}>
+                  <span className="channel-icon">
+                    <PlusIcon size={18} />
+                  </span>
+                  <span className="channel-name">{creating ? "Creating…" : "Create a room"}</span>
+                </button>
+              )
             )}
             {guestCode && session && (
               <RoomEntry
                 label={session.title}
                 code={guestCode}
-                members={occupancy[guestCode] ?? []}
+                members={(occupancy[guestCode] ?? NO_ONE).members}
                 active
                 joining={joining}
                 deafened={deafened}
-                onJoin={showVoice}
-                onShare={() => shareRoom(guestCode)}
+                onJoin={showCall}
+                onCopy={() => copyCode(guestCode)}
               />
             )}
-            <form className="code-form" onSubmit={joinByCode}>
-              <input
-                placeholder="Enter a room code"
-                aria-label="Room code"
-                maxLength={7}
-                autoCapitalize="characters"
-                autoComplete="off"
-                spellCheck={false}
-                enterKeyHint="go"
-                value={codeDraft}
-                onChange={(e) => setCodeDraft(e.target.value)}
-              />
-              <button type="submit" disabled={!codeDraft.trim() || joining !== null}>
-                Join
-              </button>
-            </form>
 
             <div className="section-label">VOICE CHANNELS</div>
             {CHANNELS.map((c) => {
-              const members = occupancy[c.id] ?? [];
+              const members = (occupancy[c.id] ?? NO_ONE).members;
               const inThis = session?.key === c.id;
               const full = members.length >= MAX_PARTICIPANTS && !inThis;
               return (
@@ -353,10 +397,12 @@ export default function Home() {
                     disabled={full || (joining !== null && joining !== c.id)}
                     title={full ? "Channel is full" : `Join ${c.name}`}
                   >
-                    <span className="channel-icon">🔊</span>
+                    <span className="channel-icon">
+                      <VolumeIcon size={18} />
+                    </span>
                     <span className="channel-name">{c.name}</span>
                     <span className={`channel-count ${full ? "full" : ""}`}>
-                      {joining === c.id ? "…" : `${members.length}/${MAX_PARTICIPANTS}`}
+                      {joining === c.id ? "…" : members.length > 0 && `${members.length}/${MAX_PARTICIPANTS}`}
                     </span>
                   </button>
                   {inThis ? (
@@ -375,28 +421,26 @@ export default function Home() {
                 className={`channel ${mainView === "text" && textChannel === c.id ? "active" : ""}`}
                 onClick={() => openText(c.id)}
               >
-                <span className="channel-icon hash">#</span>
+                <span className="channel-icon">
+                  <HashIcon size={18} />
+                </span>
                 <span className="channel-name">{c.name}</span>
               </button>
             ))}
           </div>
 
-          {/* Shows you're still in a call while looking at something else */}
           {session && (
             <div className="voice-bar">
-              <button className="voice-bar-main" onClick={showVoice}>
+              <button className="voice-bar-main" onClick={showCall}>
                 <span className="voice-dot" />
                 <span className="voice-bar-text">
-                  <strong>Voice Connected</strong>
+                  <strong>
+                    Voice Connected <Elapsed since={session.startedAt} className="voice-bar-time" />
+                  </strong>
                   <span>{session.title}</span>
                 </span>
               </button>
-              <button
-                className="voice-bar-leave"
-                onClick={() => session.room.disconnect()}
-                aria-label="Disconnect"
-                title="Disconnect"
-              >
+              <button className="voice-bar-leave" onClick={hangUp} aria-label="Disconnect" title="Disconnect">
                 <HangUpIcon size={22} />
               </button>
             </div>
@@ -406,15 +450,7 @@ export default function Home() {
             {session ? <SelfAvatar name={name} /> : <span className="mini-avatar">{name.charAt(0).toUpperCase()}</span>}
             <div className="user-info">
               <span className="user-name">{name}</span>
-              <button
-                className="link-btn"
-                onClick={() => {
-                  setSession(null);
-                  localStorage.removeItem("displayName");
-                  setNameDraft(name);
-                  setName("");
-                }}
-              >
+              <button className="link-btn" onClick={changeName}>
                 Change name
               </button>
             </div>
@@ -446,19 +482,41 @@ export default function Home() {
         </aside>
 
         <main className="main">
+          {mainView === "home" && (
+            <Home
+              name={name}
+              occupancy={occupancy}
+              joining={joining}
+              currentKey={session?.key ?? null}
+              myCode={myCode}
+              myRoomChecked={myRoomChecked}
+              creating={creating}
+              inviteCode={inviteCode}
+              onJoin={join}
+              onCreate={createRoom}
+              onCopyCode={copyCode}
+              onShare={shareRoom}
+              onBadCode={() => setError("Room codes have 6 letters and numbers, like K7P-4QX.")}
+              onOpenSettings={() => setSettingsOpen(true)}
+              onChangeName={changeName}
+            />
+          )}
+
+          {mainView === "chats" && <ChatList onOpen={openText} />}
+
           {mainView === "text" && (
             <TextChat
               key={textChannel}
               channel={activeText}
               userName={name}
-              onBack={() => setMobileView("channels")}
+              onBack={() => setMainView("chats")}
               onError={setError}
             />
           )}
 
-          {/* The call stays mounted (and audible) while you read a text channel */}
+          {/* The call stays mounted (and audible) while you look at other screens */}
           {session && (
-            <div className="voice-wrap" hidden={mainView !== "voice"}>
+            <div className="voice-wrap" hidden={mainView !== "call"}>
               <VoiceRoom
                 key={session.key}
                 room={session.room}
@@ -472,22 +530,51 @@ export default function Home() {
                 onLeave={leave}
                 onError={setError}
                 onMicFailure={onMicFailure}
-                onShowChannels={() => setMobileView("channels")}
+                onShowChannels={() => setMainView("home")}
+                startedAt={session.startedAt}
+                roomCode={session.kind === "room" ? session.key : undefined}
+                onCopyCode={() => copyCode(session.key)}
                 onInvite={session.kind === "room" ? () => shareRoom(session.key) : undefined}
               />
             </div>
           )}
+          {mainView === "call" && !session && (
+            <div className="empty-state">
+              <h2>{joining ? "Connecting…" : "Not in a call"}</h2>
+            </div>
+          )}
 
-          {mainView === "voice" && !session && (
-            <VoiceLobby
-              occupancy={occupancy}
-              joining={joining}
-              myCode={myCode}
-              inviteCode={inviteCode}
-              onJoin={join}
-              onShare={shareRoom}
-              onBack={() => setMobileView("channels")}
-            />
+          {/* Phones: "you're still in a call" bar above the tabs */}
+          {session && mainView !== "call" && mainView !== "text" && (
+            <div className="call-pill">
+              <button className="call-pill-main" onClick={showCall}>
+                <span className="voice-dot" />
+                <span className="call-pill-text">
+                  <strong>{session.title}</strong>
+                  <Elapsed since={session.startedAt} className="tabular" />
+                </span>
+                <span className="call-pill-open">
+                  Return <ChevronIcon size={16} />
+                </span>
+              </button>
+              <button className="call-pill-leave" onClick={hangUp} aria-label="Leave call">
+                <HangUpIcon size={22} />
+              </button>
+            </div>
+          )}
+
+          {/* Phones: bottom tabs on the two top-level screens */}
+          {(mainView === "home" || mainView === "chats") && (
+            <nav className="tabbar">
+              <button className={mainView === "home" ? "active" : ""} onClick={() => setMainView("home")}>
+                <CallIcon size={22} />
+                <span>Calls</span>
+              </button>
+              <button className={mainView === "chats" ? "active" : ""} onClick={() => setMainView("chats")}>
+                <ChatIcon size={22} />
+                <span>Chat</span>
+              </button>
+            </nav>
           )}
         </main>
 
@@ -498,7 +585,39 @@ export default function Home() {
   );
 }
 
-/** A personal room in the sidebar: join on click, share button on the right, members below. */
+/** Phones: the "Chat" tab, a list of text channels. */
+function ChatList({ onOpen }: { onOpen: (id: TextChannelId) => void }) {
+  return (
+    <div className="home">
+      <header className="home-top">
+        <span className="brand-logo">
+          <ChatIcon size={18} />
+        </span>
+        <h1>Chat</h1>
+      </header>
+      <div className="home-body">
+        <div className="home-inner">
+          <div className="channel-cards">
+            {TEXT_CHANNELS.map((c) => (
+              <button key={c.id} className="call-row" onClick={() => onOpen(c.id)}>
+                <span className="icon-badge">
+                  <HashIcon size={20} />
+                </span>
+                <span className="call-row-text">
+                  <strong>{c.name}</strong>
+                  <span className="muted">Text channel</span>
+                </span>
+                <ChevronIcon size={18} />
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** A personal room in the sidebar: join on click, copy-code button on the right, members below. */
 function RoomEntry({
   label,
   code,
@@ -507,7 +626,7 @@ function RoomEntry({
   joining,
   deafened,
   onJoin,
-  onShare,
+  onCopy,
 }: {
   label: string;
   code: string;
@@ -516,7 +635,7 @@ function RoomEntry({
   joining: string | null;
   deafened: boolean;
   onJoin: () => void;
-  onShare: () => void;
+  onCopy: () => void;
 }) {
   return (
     <div>
@@ -526,146 +645,19 @@ function RoomEntry({
           onClick={onJoin}
           disabled={joining !== null && joining !== code}
         >
-          <span className="channel-icon">🏠</span>
+          <span className="channel-icon">
+            <HomeIcon size={18} />
+          </span>
           <span className="channel-name">
             {label} <span className="channel-sub">{formatCode(code)}</span>
           </span>
-          <span className="channel-count">{joining === code ? "…" : `${members.length}/${MAX_PARTICIPANTS}`}</span>
+          <span className="channel-count">{joining === code ? "…" : members.length > 0 && members.length}</span>
         </button>
-        <button className="channel-share" onClick={onShare} aria-label="Copy invite link" title="Copy invite link">
-          <LinkIcon size={16} />
+        <button className="channel-share" onClick={onCopy} aria-label="Copy room code" title="Copy room code">
+          <CopyIcon size={16} />
         </button>
       </div>
       {active ? <LiveMemberList fallback={members} selfDeafened={deafened} /> : <MemberList members={members} />}
-    </div>
-  );
-}
-
-function Avatars({ members }: { members: Member[] }) {
-  return (
-    <div className="lobby-people">
-      {members.length === 0 ? (
-        <span className="lobby-empty">Nobody here yet</span>
-      ) : (
-        members.map((m) => (
-          <span key={m.identity} className="mini-avatar" title={m.name}>
-            {m.name.charAt(0).toUpperCase()}
-          </span>
-        ))
-      )}
-    </div>
-  );
-}
-
-/** Shown when you're not in a call: your room, any invite, and the public channels. */
-function VoiceLobby({
-  occupancy,
-  joining,
-  myCode,
-  inviteCode,
-  onJoin,
-  onShare,
-  onBack,
-}: {
-  occupancy: Occupancy;
-  joining: string | null;
-  myCode: string | null;
-  inviteCode: string | null;
-  onJoin: (t: Target) => void;
-  onShare: (code: string) => void;
-  onBack: () => void;
-}) {
-  const myMembers = myCode ? (occupancy[myCode] ?? []) : [];
-  const inviteMembers = inviteCode ? (occupancy[inviteCode] ?? []) : [];
-
-  return (
-    <div className="lobby">
-      <header className="room-header">
-        <button className="back-btn mobile-only" onClick={onBack} aria-label="Show channels">
-          ‹
-        </button>
-        <span className="channel-icon">🔊</span>
-        <div className="room-title">
-          <h2>Voice</h2>
-        </div>
-      </header>
-      <div className="lobby-body">
-        <p className="lobby-hint">
-          {joining
-            ? "Connecting…"
-            : `Start your own room or hop into a channel. Up to ${MAX_PARTICIPANTS} people each, no time limit.`}
-        </p>
-
-        <div className="lobby-grid">
-          {inviteCode && inviteCode !== myCode && (
-            <div className="lobby-card invite-card">
-              <div className="lobby-card-head">
-                <span className="channel-icon">✉️</span>
-                <strong>Invite to room {formatCode(inviteCode)}</strong>
-              </div>
-              <Avatars members={inviteMembers} />
-              <button
-                className="lobby-join"
-                onClick={() => onJoin({ kind: "room", code: inviteCode })}
-                disabled={joining !== null}
-              >
-                {joining === inviteCode ? "Joining…" : "Join room"}
-              </button>
-            </div>
-          )}
-
-          {myCode && (
-            <div className="lobby-card">
-              <div className="lobby-card-head">
-                <span className="channel-icon">🏠</span>
-                <strong>My room</strong>
-                <span className="room-code">{formatCode(myCode)}</span>
-              </div>
-              <p className="lobby-desc">Always the same code. Friends can join while someone is inside.</p>
-              <Avatars members={myMembers} />
-              <div className="lobby-actions">
-                <button className="btn-secondary" onClick={() => onShare(myCode)}>
-                  <LinkIcon size={16} /> Invite
-                </button>
-                <button
-                  className="lobby-join"
-                  onClick={() => onJoin({ kind: "room", code: myCode })}
-                  disabled={joining !== null}
-                >
-                  {joining === myCode ? "Joining…" : myMembers.length ? "Join" : "Start"}
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-
-        <h3 className="lobby-title">Public channels</h3>
-        <div className="lobby-grid">
-          {CHANNELS.map((c) => {
-            const members = occupancy[c.id] ?? [];
-            const full = members.length >= MAX_PARTICIPANTS;
-            return (
-              <div key={c.id} className="lobby-card">
-                <div className="lobby-card-head">
-                  <span className="channel-icon">🔊</span>
-                  <strong>{c.name}</strong>
-                  <span className={`channel-count ${full ? "full" : ""}`}>
-                    {members.length}/{MAX_PARTICIPANTS}
-                  </span>
-                </div>
-                <Avatars members={members} />
-                <button
-                  className="lobby-join"
-                  onClick={() => onJoin({ kind: "channel", id: c.id })}
-                  disabled={full || joining !== null}
-                >
-                  {joining === c.id ? "Joining…" : full ? "Full" : members.length ? "Join call" : "Start call"}
-                </button>
-              </div>
-            );
-          })}
-        </div>
-      </div>
     </div>
   );
 }
