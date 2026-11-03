@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   LiveKitRoom,
   RoomAudioRenderer,
@@ -14,14 +14,16 @@ import {
   useTrackMutedIndicator,
 } from "@livekit/components-react";
 import { useKrispNoiseFilter } from "@livekit/components-react/krisp";
-import { ConnectionState, Track, type Participant, type RemoteParticipant } from "livekit-client";
+import { ConnectionState, Room, RoomEvent, Track, type Participant, type RemoteParticipant } from "livekit-client";
 import { MAX_PARTICIPANTS } from "@/lib/channels";
 import { prefs } from "@/lib/prefs";
+import { playSound } from "@/lib/sounds";
 import {
   DeviceIcon,
   HangUpIcon,
   HeadphonesIcon,
   HeadphonesOffIcon,
+  LinkIcon,
   MicIcon,
   MicOffIcon,
   SettingsIcon,
@@ -29,56 +31,96 @@ import {
 } from "@/components/Icons";
 import { SettingsSheet, VolumeSheet } from "@/components/AudioSheets";
 
+/**
+ * Creates the call's Room. The page owns it (not <LiveKitRoom>), so the sidebar and the
+ * bottom-left panel can show live call state too. Browser only.
+ */
+export function createVoiceRoom() {
+  // Read saved devices, so the call starts on the user's chosen mic/speaker
+  const micId = prefs.micId();
+  const speakerId = prefs.speakerId();
+  return new Room({
+    adaptiveStream: true,
+    dynacast: true,
+    audioCaptureDefaults: {
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true,
+      // "ideal" falls back to the default mic if the saved one is unplugged
+      ...(micId ? { deviceId: { ideal: micId } } : {}),
+    },
+    ...(speakerId ? { audioOutput: { deviceId: speakerId } } : {}),
+  });
+}
+
+/** Mute/deafen state lives in the page, so it works before joining and from the sidebar. */
+export type VoiceState = {
+  muted: boolean;
+  deafened: boolean;
+  onToggleMute: () => void;
+  onToggleDeafen: () => void;
+};
+
 type Props = {
+  room: Room;
   serverUrl: string;
   token: string;
   channelName: string;
+  voice: VoiceState;
+  settingsOpen: boolean;
+  onOpenSettings: () => void;
+  onCloseSettings: () => void;
   onLeave: () => void;
   onError: (msg: string) => void;
+  onMicFailure: () => void;
   onShowChannels: () => void;
+  /** Personal rooms get an Invite button in the header */
+  onInvite?: () => void;
 };
 
-export default function VoiceRoom({ serverUrl, token, channelName, onLeave, onError, onShowChannels }: Props) {
-  // Read saved devices once, so the call starts on the user's chosen mic/speaker
-  const [micId] = useState(() => prefs.micId());
-  const [speakerId] = useState(() => prefs.speakerId());
+export default function VoiceRoom({ room, serverUrl, token, onMicFailure, onLeave, onError, ...rest }: Props) {
+  // Only the starting value matters; later changes are applied by useMicSync
+  const [startWithMic] = useState(() => !rest.voice.muted && !rest.voice.deafened);
 
   return (
     <LiveKitRoom
       className="room"
+      room={room}
       serverUrl={serverUrl}
       token={token}
       connect
-      audio
+      audio={startWithMic}
       video={false}
-      options={{
-        adaptiveStream: true,
-        dynacast: true,
-        audioCaptureDefaults: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-          // "ideal" falls back to the default mic if the saved one is unplugged
-          ...(micId ? { deviceId: { ideal: micId } } : {}),
-        },
-        ...(speakerId ? { audioOutput: { deviceId: speakerId } } : {}),
-      }}
       onDisconnected={onLeave}
       onError={(e) => onError(e.message)}
-      onMediaDeviceFailure={() => onError("Could not access your microphone. Check browser permissions.")}
+      onMediaDeviceFailure={onMicFailure}
     >
-      <RoomView channelName={channelName} onShowChannels={onShowChannels} />
+      <RoomView token={token} {...rest} />
       <StartAudio label="Click to enable audio" className="start-audio" />
     </LiveKitRoom>
   );
 }
 
-type Sheet = { type: "settings" } | { type: "volume"; participant: RemoteParticipant } | null;
+type Sheet = { type: "volume"; participant: RemoteParticipant } | null;
 
-function RoomView({ channelName, onShowChannels }: { channelName: string; onShowChannels: () => void }) {
-  const [deafened, setDeafened] = useState(false);
+type RoomViewProps = Omit<Props, "room" | "serverUrl" | "onLeave" | "onError" | "onMicFailure">;
+
+function RoomView({
+  token,
+  channelName,
+  voice,
+  settingsOpen,
+  onOpenSettings,
+  onCloseSettings,
+  onShowChannels,
+  onInvite,
+}: RoomViewProps) {
   const [sheet, setSheet] = useState<Sheet>(null);
   const [volumes, setVolumes] = useState(() => prefs.volumes());
+
+  useMicSync(!voice.muted && !voice.deafened);
+  useBroadcastDeafened(voice.deafened, token);
+  useCallSounds(voice.deafened);
 
   // Krisp AI noise cancellation (LiveKit Cloud only). One hook instance for the whole room.
   const krisp = useKrispNoiseFilter();
@@ -114,19 +156,20 @@ function RoomView({ channelName, onShowChannels }: { channelName: string; onShow
 
   return (
     <>
-      <RoomHeader channelName={channelName} onShowChannels={onShowChannels} />
+      <RoomHeader channelName={channelName} onShowChannels={onShowChannels} onInvite={onInvite} />
       <ParticipantGrid
         volumes={volumes}
+        selfDeafened={voice.deafened}
         onOpenVolume={(p) => setSheet({ type: "volume", participant: p })}
-        onOpenSettings={() => setSheet({ type: "settings" })}
+        onOpenSettings={onOpenSettings}
       />
-      <Controls deafened={deafened} setDeafened={setDeafened} onOpenSettings={() => setSheet({ type: "settings" })} />
+      <Controls voice={voice} onOpenSettings={onOpenSettings} />
       {/* Plays everyone else's audio; muted when deafened */}
-      <RoomAudioRenderer muted={deafened} />
+      <RoomAudioRenderer muted={voice.deafened} />
 
-      {sheet?.type === "settings" && (
+      {settingsOpen && (
         <SettingsSheet
-          onClose={closeSheet}
+          onClose={onCloseSettings}
           noiseFilter={{
             supported: krispSupported,
             enabled: krisp.isNoiseFilterEnabled,
@@ -147,7 +190,82 @@ function RoomView({ channelName, onShowChannels }: { channelName: string; onShow
   );
 }
 
-function RoomHeader({ channelName, onShowChannels }: { channelName: string; onShowChannels: () => void }) {
+/** Turns the mic on/off when mute or deafen changes (the starting state is set on join). */
+function useMicSync(micOn: boolean) {
+  const { localParticipant } = useLocalParticipant();
+  const first = useRef(true);
+  useEffect(() => {
+    if (first.current) {
+      first.current = false;
+      return;
+    }
+    localParticipant.setMicrophoneEnabled(micOn).catch(() => {});
+  }, [micOn, localParticipant]);
+}
+
+/** Lets everyone see the deafened icon. The starting value is already in the join token. */
+function useBroadcastDeafened(deafened: boolean, token: string) {
+  const first = useRef(true);
+  const queue = useRef<Promise<unknown>>(Promise.resolve());
+  useEffect(() => {
+    if (first.current) {
+      first.current = false;
+      return;
+    }
+    // Chained, so quick toggles can't arrive at the server out of order
+    queue.current = queue.current
+      .then(() =>
+        fetch("/api/voice-state", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ deafened }),
+        }),
+      )
+      .catch(() => {});
+  }, [deafened, token]);
+}
+
+/** Join/leave chimes, like Discord. */
+function useCallSounds(deafened: boolean) {
+  const room = useRoomContext();
+  const deafenedRef = useRef(deafened);
+  useEffect(() => {
+    deafenedRef.current = deafened;
+  }, [deafened]);
+
+  useEffect(() => {
+    let connectedAt = 0;
+    // Ignore the burst of events for people who were already in the channel when we joined
+    const settled = () => Date.now() - connectedAt > 1500;
+    const onConnected = () => {
+      connectedAt = Date.now();
+      playSound("join");
+    };
+    const onJoin = () => settled() && !deafenedRef.current && playSound("join");
+    const onLeave = () => settled() && !deafenedRef.current && playSound("leave");
+
+    room
+      .on(RoomEvent.Connected, onConnected)
+      .on(RoomEvent.ParticipantConnected, onJoin)
+      .on(RoomEvent.ParticipantDisconnected, onLeave);
+    return () => {
+      room
+        .off(RoomEvent.Connected, onConnected)
+        .off(RoomEvent.ParticipantConnected, onJoin)
+        .off(RoomEvent.ParticipantDisconnected, onLeave);
+    };
+  }, [room]);
+}
+
+function RoomHeader({
+  channelName,
+  onShowChannels,
+  onInvite,
+}: {
+  channelName: string;
+  onShowChannels: () => void;
+  onInvite?: () => void;
+}) {
   const state = useConnectionState();
   const participants = useParticipants();
   const label =
@@ -169,17 +287,23 @@ function RoomHeader({ channelName, onShowChannels }: { channelName: string; onSh
       <span className="room-count">
         {participants.length}/{MAX_PARTICIPANTS}
       </span>
+      {onInvite && (
+        <button className="invite-btn" onClick={onInvite} title="Copy invite link">
+          <LinkIcon size={16} /> Invite
+        </button>
+      )}
     </header>
   );
 }
 
 type GridProps = {
   volumes: Record<string, number>;
+  selfDeafened: boolean;
   onOpenVolume: (p: RemoteParticipant) => void;
   onOpenSettings: () => void;
 };
 
-function ParticipantGrid({ volumes, onOpenVolume, onOpenSettings }: GridProps) {
+function ParticipantGrid({ volumes, selfDeafened, onOpenVolume, onOpenSettings }: GridProps) {
   const participants = useParticipants();
   return (
     <div className="grid">
@@ -188,6 +312,7 @@ function ParticipantGrid({ volumes, onOpenVolume, onOpenSettings }: GridProps) {
           key={p.identity}
           participant={p}
           volume={volumes[p.name || ""] ?? 1}
+          selfDeafened={selfDeafened}
           onClick={() => (p.isLocal ? onOpenSettings() : onOpenVolume(p as RemoteParticipant))}
         />
       ))}
@@ -198,15 +323,20 @@ function ParticipantGrid({ volumes, onOpenVolume, onOpenSettings }: GridProps) {
 function ParticipantTile({
   participant,
   volume,
+  selfDeafened,
   onClick,
 }: {
   participant: Participant;
   volume: number;
+  selfDeafened: boolean;
   onClick: () => void;
 }) {
   const speaking = useIsSpeaking(participant);
   const { isMuted } = useTrackMutedIndicator({ participant, source: Track.Source.Microphone });
   const device = useParticipantAttribute("device", { participant });
+  const deafenedAttr = useParticipantAttribute("deafened", { participant });
+  // Our own state is known instantly; other people's arrives via their attributes
+  const deafened = participant.isLocal ? selfDeafened : deafenedAttr === "1";
   const name = participant.name || "Unknown";
 
   // Apply this person's saved volume (LiveKit also re-applies it when their audio arrives)
@@ -222,9 +352,9 @@ function ParticipantTile({
     >
       <div className="avatar">
         {name.charAt(0).toUpperCase()}
-        {isMuted && (
-          <span className="muted-badge" title="Muted">
-            <MicOffIcon size={14} />
+        {(deafened || isMuted) && (
+          <span className="muted-badge" title={deafened ? "Deafened" : "Muted"}>
+            {deafened ? <HeadphonesOffIcon size={14} /> : <MicOffIcon size={14} />}
           </span>
         )}
       </div>
@@ -242,47 +372,23 @@ function ParticipantTile({
   );
 }
 
-function Controls({
-  deafened,
-  setDeafened,
-  onOpenSettings,
-}: {
-  deafened: boolean;
-  setDeafened: (d: boolean) => void;
-  onOpenSettings: () => void;
-}) {
+function Controls({ voice, onOpenSettings }: { voice: VoiceState; onOpenSettings: () => void }) {
   const room = useRoomContext();
-  const { localParticipant, isMicrophoneEnabled } = useLocalParticipant();
-
-  const toggleMic = () => {
-    const enable = !isMicrophoneEnabled;
-    localParticipant.setMicrophoneEnabled(enable);
-    if (enable && deafened) setDeafened(false); // unmuting also undeafens, like Discord
-  };
-
-  const toggleDeafen = () => {
-    const next = !deafened;
-    setDeafened(next);
-    localParticipant.setMicrophoneEnabled(!next); // deafening also mutes your mic
-  };
+  const micOff = voice.muted || voice.deafened;
 
   return (
     <div className="controls">
-      <button
-        className={`ctrl ${isMicrophoneEnabled ? "" : "off"}`}
-        onClick={toggleMic}
-        aria-label={isMicrophoneEnabled ? "Mute" : "Unmute"}
-      >
-        <span className="ctrl-icon">{isMicrophoneEnabled ? <MicIcon /> : <MicOffIcon />}</span>
-        <span className="ctrl-label">{isMicrophoneEnabled ? "Mute" : "Unmute"}</span>
+      <button className={`ctrl ${micOff ? "off" : ""}`} onClick={voice.onToggleMute} aria-label={micOff ? "Unmute" : "Mute"}>
+        <span className="ctrl-icon">{micOff ? <MicOffIcon /> : <MicIcon />}</span>
+        <span className="ctrl-label">{micOff ? "Unmute" : "Mute"}</span>
       </button>
       <button
-        className={`ctrl ${deafened ? "off" : ""}`}
-        onClick={toggleDeafen}
-        aria-label={deafened ? "Undeafen" : "Deafen"}
+        className={`ctrl ${voice.deafened ? "off" : ""}`}
+        onClick={voice.onToggleDeafen}
+        aria-label={voice.deafened ? "Undeafen" : "Deafen"}
       >
-        <span className="ctrl-icon">{deafened ? <HeadphonesOffIcon /> : <HeadphonesIcon />}</span>
-        <span className="ctrl-label">{deafened ? "Undeafen" : "Deafen"}</span>
+        <span className="ctrl-icon">{voice.deafened ? <HeadphonesOffIcon /> : <HeadphonesIcon />}</span>
+        <span className="ctrl-label">{voice.deafened ? "Undeafen" : "Deafen"}</span>
       </button>
       <button className="ctrl" onClick={onOpenSettings} aria-label="Audio settings">
         <span className="ctrl-icon">

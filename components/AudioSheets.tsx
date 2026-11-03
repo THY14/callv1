@@ -1,11 +1,20 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useLocalParticipant, useMediaDeviceSelect, useTrackVolume } from "@livekit/components-react";
+import { createPortal } from "react-dom";
+import {
+  useLocalParticipant,
+  useMaybeRoomContext,
+  useMediaDeviceSelect,
+  useTrackVolume,
+} from "@livekit/components-react";
 import type { LocalAudioTrack } from "livekit-client";
 import { prefs } from "@/lib/prefs";
 
-/** Bottom sheet on phones, centred dialog on desktop. */
+/**
+ * Bottom sheet on phones, centred dialog on desktop.
+ * Rendered into <body> so it still shows while the call view is hidden behind a text channel.
+ */
 function Sheet({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -13,7 +22,7 @@ function Sheet({ title, onClose, children }: { title: string; onClose: () => voi
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  return (
+  return createPortal(
     <div className="sheet-backdrop" onClick={onClose}>
       <div className="sheet" role="dialog" aria-modal="true" aria-label={title} onClick={(e) => e.stopPropagation()}>
         <div className="sheet-header">
@@ -24,7 +33,8 @@ function Sheet({ title, onClose, children }: { title: string; onClose: () => voi
         </div>
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -35,9 +45,29 @@ type NoiseFilter = {
   onToggle: (on: boolean) => void;
 };
 
+/** Settings before joining a call: changes are saved and used when you join. */
+export function LobbySettingsSheet({ onClose }: { onClose: () => void }) {
+  const [noise, setNoise] = useState(() => prefs.noiseFilter());
+  return (
+    <SettingsSheet
+      onClose={onClose}
+      noiseFilter={{
+        supported: true,
+        enabled: noise,
+        pending: false,
+        onToggle: (on) => {
+          prefs.setNoiseFilter(on);
+          setNoise(on);
+        },
+      }}
+    />
+  );
+}
+
+/** Works in and out of a call; the mic test meter only shows during a call. */
 export function SettingsSheet({ onClose, noiseFilter }: { onClose: () => void; noiseFilter: NoiseFilter }) {
-  const { microphoneTrack, isMicrophoneEnabled } = useLocalParticipant();
-  const level = useTrackVolume(microphoneTrack?.track as LocalAudioTrack | undefined);
+  const inCall = !!useMaybeRoomContext();
+  const [sounds, setSounds] = useState(() => prefs.sounds());
 
   const mics = useMediaDeviceSelect({ kind: "audioinput" });
   const speakers = useMediaDeviceSelect({ kind: "audiooutput" });
@@ -94,12 +124,7 @@ export function SettingsSheet({ onClose, noiseFilter }: { onClose: () => void; n
             </option>
           ))}
         </select>
-        <div className="meter" aria-label="Microphone level">
-          <div className="meter-fill" style={{ width: `${Math.min(100, Math.round(level * 400))}%` }} />
-        </div>
-        <div className="setting-desc">
-          {isMicrophoneEnabled ? "Talk to test: the bar should move when you speak." : "You're muted. Unmute to test your mic."}
-        </div>
+        {inCall ? <MicMeter /> : <div className="setting-desc">Join a voice channel to test your mic.</div>}
       </section>
 
       {canPickSpeaker && (
@@ -121,7 +146,54 @@ export function SettingsSheet({ onClose, noiseFilter }: { onClose: () => void; n
           </select>
         </section>
       )}
+
+      <section className="setting">
+        <div className="setting-row">
+          <div>
+            <div className="setting-title">Join &amp; leave sounds</div>
+            <div className="setting-desc">Chimes when people join or leave, and when you mute or deafen.</div>
+          </div>
+          <label className="switch">
+            <input
+              type="checkbox"
+              checked={sounds}
+              onChange={(e) => {
+                prefs.setSounds(e.target.checked);
+                setSounds(e.target.checked);
+              }}
+            />
+            <span className="switch-track" />
+          </label>
+        </div>
+      </section>
+
+      <section className="setting desktop-only">
+        <div className="setting-title">Keyboard shortcuts</div>
+        <div className="shortcut-row">
+          <span>Mute / unmute</span>
+          <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>M</kbd>
+        </div>
+        <div className="shortcut-row">
+          <span>Deafen / undeafen</span>
+          <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>D</kbd>
+        </div>
+      </section>
     </Sheet>
+  );
+}
+
+function MicMeter() {
+  const { microphoneTrack, isMicrophoneEnabled } = useLocalParticipant();
+  const level = useTrackVolume(microphoneTrack?.track as LocalAudioTrack | undefined);
+  return (
+    <>
+      <div className="meter" aria-label="Microphone level">
+        <div className="meter-fill" style={{ width: `${Math.min(100, Math.round(level * 400))}%` }} />
+      </div>
+      <div className="setting-desc">
+        {isMicrophoneEnabled ? "Talk to test: the bar should move when you speak." : "You're muted. Unmute to test your mic."}
+      </div>
+    </>
   );
 }
 

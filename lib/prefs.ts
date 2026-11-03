@@ -16,6 +16,9 @@ function write(key: string, value: unknown) {
 }
 
 export const prefs = {
+  sounds: () => read("pref.sounds", true),
+  setSounds: (on: boolean) => write("pref.sounds", on),
+
   noiseFilter: () => read("pref.noiseFilter", true),
   setNoiseFilter: (on: boolean) => write("pref.noiseFilter", on),
 

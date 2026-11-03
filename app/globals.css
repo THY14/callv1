@@ -61,22 +61,32 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 .mini-avatar {
   width: 22px; height: 22px; border-radius: 50%; background: #5865f2; color: white;
   display: grid; place-items: center; font-size: 11px; font-weight: 700; flex-shrink: 0;
+  transition: box-shadow .1s;
 }
+/* Green ring while talking, like Discord */
+.mini-avatar.speaking { box-shadow: 0 0 0 2px #2b2d31, 0 0 0 4px #23a55a; }
+.member-status { margin-left: auto; display: inline-flex; color: #f23f43; flex-shrink: 0; padding-right: 10px; }
 
-/* "Voice Connected" bar: only shown on phones (see media query) */
+/* "Voice Connected" panel above your name, with a disconnect button */
 .voice-bar {
-  display: flex; align-items: center; gap: 10px; flex-shrink: 0;
-  margin: 0 8px 8px; padding: 8px 12px; border: none; border-radius: 8px;
-  background: #23a55a; color: white; text-align: left;
+  display: flex; align-items: stretch; gap: 4px; flex-shrink: 0;
+  margin: 0 8px 8px; border-radius: 8px; background: #23a55a; color: white; overflow: hidden;
 }
-.voice-bar:hover { background: #1f9150; }
-.voice-bar:active { background: #1a8a4a; }
-/* Desktop: hide it while the call itself is on screen */
-.app[data-main-view="voice"] .voice-bar { display: none; }
+.voice-bar-main {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px;
+  padding: 8px 12px; border: none; background: none; color: inherit; text-align: left;
+}
+.voice-bar-main:hover { background: #1f9150; }
+.voice-bar-main:active { background: #1a8a4a; }
+.voice-bar-leave {
+  width: 48px; flex-shrink: 0; display: grid; place-items: center; border: none;
+  background: rgba(0, 0, 0, .15); color: white;
+}
+.voice-bar-leave:hover { background: #da373c; }
 .voice-dot { width: 10px; height: 10px; border-radius: 50%; background: white; animation: pulse 1.5s infinite; flex-shrink: 0; }
 .voice-bar-text { flex: 1; display: flex; flex-direction: column; font-size: 13px; line-height: 1.3; min-width: 0; }
 .voice-bar-text strong { font-size: 14px; }
-.voice-bar-open { font-weight: 600; }
+.voice-bar-text span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .channel-icon.hash, .hash { font-size: 20px; font-weight: 500; color: #80848e; width: 20px; text-align: center; line-height: 1; }
 .voice-wrap { flex: 1; display: flex; flex-direction: column; min-height: 0; }
@@ -181,14 +191,50 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 }
 .send-btn:disabled { background: #383a40; color: #80848e; opacity: 1; }
 
+/* Bottom-left panel: you + mute / deafen / settings, always within reach */
 .user-panel {
-  flex-shrink: 0; height: 52px; background: #232428;
-  display: flex; align-items: center; gap: 8px; padding: 0 12px;
+  flex-shrink: 0; height: 56px; background: #232428;
+  display: flex; align-items: center; gap: 4px; padding: 0 8px 0 10px;
 }
-.user-panel .mini-avatar { width: 32px; height: 32px; font-size: 14px; }
-.user-name { flex: 1; font-weight: 600; color: #f2f3f5; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.link-btn { background: none; border: none; color: #949ba4; font-size: 12px; padding: 8px; }
+.user-panel .mini-avatar { width: 32px; height: 32px; font-size: 14px; margin-right: 4px; }
+.user-panel .mini-avatar.speaking { box-shadow: 0 0 0 2px #232428, 0 0 0 4px #23a55a; }
+.user-info { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; line-height: 1.2; }
+.user-name { max-width: 100%; font-weight: 600; color: #f2f3f5; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.link-btn { background: none; border: none; color: #949ba4; font-size: 12px; padding: 0; }
 .link-btn:hover { color: #dbdee1; text-decoration: underline; }
+.panel-btn {
+  width: 36px; height: 36px; flex-shrink: 0; display: grid; place-items: center;
+  border: none; border-radius: 6px; background: none; color: #b5bac1;
+}
+.panel-btn:hover { background: #3f4147; color: #dbdee1; }
+.panel-btn.off { color: #f23f43; }
+
+/* Voice lobby: shown in the main area when you're not in a call */
+.lobby { flex: 1; display: flex; flex-direction: column; min-height: 0; background: #1e1f22; }
+.lobby-body { flex: 1; overflow-y: auto; padding: 24px 16px; }
+.lobby-hint { text-align: center; color: #949ba4; margin: 0 0 20px; }
+.lobby-grid {
+  display: grid; gap: 12px; max-width: 960px; margin: 0 auto;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+}
+.lobby-card { background: #2b2d31; border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+.lobby-card-head { display: flex; align-items: center; gap: 8px; color: #f2f3f5; }
+.lobby-card-head strong { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lobby-people { display: flex; flex-wrap: wrap; gap: 6px; min-height: 28px; align-items: center; }
+.lobby-people .mini-avatar { width: 28px; height: 28px; font-size: 12px; }
+.lobby-empty { font-size: 13px; color: #80848e; }
+.lobby-join {
+  padding: 10px; border: none; border-radius: 6px; background: #23a55a; color: white; font-weight: 600;
+}
+.lobby-join:hover:not(:disabled) { background: #1f9150; }
+
+/* Keyboard shortcut list in settings */
+.shortcut-row { display: flex; align-items: center; gap: 4px; font-size: 13px; color: #b5bac1; }
+.shortcut-row span { flex: 1; }
+kbd {
+  font: inherit; font-size: 12px; font-weight: 600; color: #f2f3f5; background: #1e1f22;
+  border-radius: 4px; padding: 2px 6px; box-shadow: inset 0 -1px 0 #4e5058;
+}
 
 .main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; position: relative; }
 .empty-state { margin: auto; text-align: center; color: #949ba4; padding: 24px; }
@@ -345,9 +391,11 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
   .channel-members li { font-size: 15px; padding: 5px 0; }
   .channel-members { padding-left: 40px; }
 
-  /* On phones the sidebar is its own screen, so always show the bar there */
-  .app[data-main-view="voice"] .voice-bar { display: flex; }
-  .voice-bar { padding: 12px 14px; }
+  .voice-bar-main { padding: 12px 14px; }
+  .voice-bar-leave { width: 56px; }
+  .panel-btn { width: 44px; height: 44px; } /* bigger tap targets */
+  .desktop-only { display: none !important; }
+  .lobby-body { padding: 16px 12px; }
 
   /* Chat */
   .chat-list { padding-bottom: 8px; }
@@ -362,7 +410,7 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
   .msg-actions button { min-width: 40px; height: 36px; } /* bigger tap targets */
   .typing { padding: 0 12px; }
 
-  .user-panel { height: auto; min-height: 56px; padding-bottom: env(safe-area-inset-bottom); }
+  .user-panel { height: auto; min-height: 60px; padding-bottom: env(safe-area-inset-bottom); }
 
   .room-header { padding: 10px 12px; padding-top: max(10px, env(safe-area-inset-top)); }
   .room-title { flex-direction: column; align-items: flex-start; gap: 0; }
@@ -413,3 +461,46 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 }
 
 @keyframes pulse { 50% { opacity: .4; } }
+
+/* ---------- Personal rooms ---------- */
+.channel-row { display: flex; align-items: center; gap: 2px; margin: 1px 8px; }
+.channel-row .channel { width: auto; flex: 1; min-width: 0; margin: 0; }
+.channel-sub { font-size: 12px; color: #80848e; margin-left: 4px; font-variant-numeric: tabular-nums; }
+.channel-share {
+  width: 34px; height: 34px; flex-shrink: 0; display: grid; place-items: center;
+  border: none; border-radius: 6px; background: none; color: #949ba4;
+}
+.channel-share:hover { background: #35373c; color: #dbdee1; }
+.code-form { display: flex; gap: 6px; margin: 6px 8px 0; }
+.code-form input {
+  flex: 1; min-width: 0; padding: 8px 10px; border: none; border-radius: 6px; background: #1e1f22; color: #f2f3f5;
+  font: inherit; font-size: 14px; text-transform: uppercase; letter-spacing: .06em;
+}
+.code-form input::placeholder { text-transform: none; letter-spacing: normal; color: #80848e; }
+.code-form input:focus { outline: 2px solid #5865f2; }
+.code-form button { padding: 0 14px; border: none; border-radius: 6px; background: #5865f2; color: white; font-weight: 600; }
+
+.room-code {
+  font-size: 13px; font-weight: 700; color: #f2f3f5; background: #1e1f22; padding: 3px 8px; border-radius: 6px;
+  letter-spacing: .06em; font-variant-numeric: tabular-nums;
+}
+.lobby-desc { margin: 0; font-size: 13px; color: #949ba4; }
+.lobby-actions { display: flex; gap: 8px; }
+.lobby-actions > * { flex: 1; }
+.lobby-actions .btn-secondary { display: flex; align-items: center; justify-content: center; gap: 6px; }
+.lobby-title { max-width: 960px; margin: 28px auto 12px; font-size: 12px; font-weight: 700; color: #949ba4; letter-spacing: .02em; text-transform: uppercase; }
+.invite-card { outline: 2px solid #5865f2; }
+
+.invite-btn {
+  display: flex; align-items: center; gap: 6px; padding: 6px 12px; border: none; border-radius: 6px;
+  background: #5865f2; color: white; font-size: 13px; font-weight: 600; flex-shrink: 0;
+}
+.invite-btn:hover { background: #4752c4; }
+
+.toast.ok { background: #23a55a; }
+
+@media (max-width: 768px) {
+  .code-form { margin: 8px 8px 0; }
+  .code-form input { font-size: 16px; padding: 11px 12px; } /* stops iOS zoom */
+  .channel-share { width: 44px; height: 44px; }
+}
