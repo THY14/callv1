@@ -313,7 +313,7 @@ function RoomHeader({
       <button className="back-btn mobile-only" onClick={onShowChannels} aria-label="Back">
         <ChevronIcon size={22} />
       </button>
-      <span className="header-icon">
+      <span className="header-icon desktop-only">
         <VolumeIcon size={20} />
       </span>
       <div className="room-title">
@@ -332,7 +332,7 @@ function RoomHeader({
         </button>
       )}
       {onInvite && (
-        <button className="invite-btn" onClick={onInvite} title="Copy invite link" aria-label="Copy invite link">
+        <button className="btn btn-primary invite-btn" onClick={onInvite} title="Copy invite link" aria-label="Copy invite link">
           <LinkIcon size={16} /> <span className="invite-label">Invite</span>
         </button>
       )}
@@ -350,7 +350,8 @@ type GridProps = {
 function ParticipantGrid({ volumes, selfDeafened, onOpenVolume, onOpenSettings }: GridProps) {
   const participants = useParticipants();
   return (
-    <div className="grid">
+    // data-count lets the tiles size themselves to how many people are here
+    <div className="grid" data-count={participants.length}>
       {participants.map((p) => (
         <ParticipantTile
           key={p.identity}
@@ -360,6 +361,7 @@ function ParticipantGrid({ volumes, selfDeafened, onOpenVolume, onOpenSettings }
           onClick={() => (p.isLocal ? onOpenSettings() : onOpenVolume(p as RemoteParticipant))}
         />
       ))}
+      {participants.length === 1 && <p className="call-alone">Waiting for others to join.</p>}
     </div>
   );
 }

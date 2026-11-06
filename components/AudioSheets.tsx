@@ -10,6 +10,7 @@ import {
 } from "@livekit/components-react";
 import type { LocalAudioTrack } from "livekit-client";
 import { prefs } from "@/lib/prefs";
+import { CloseIcon } from "@/components/Icons";
 
 /**
  * Bottom sheet on phones, centred dialog on desktop.
@@ -28,7 +29,7 @@ function Sheet({ title, onClose, children }: { title: string; onClose: () => voi
         <div className="sheet-header">
           <h3>{title}</h3>
           <button className="sheet-close" onClick={onClose} aria-label="Close">
-            ✕
+            <CloseIcon size={20} />
           </button>
         </div>
         {children}
@@ -188,7 +189,8 @@ function MicMeter() {
   return (
     <>
       <div className="meter" aria-label="Microphone level">
-        <div className="meter-fill" style={{ width: `${Math.min(100, Math.round(level * 400))}%` }} />
+        {/* scaleX, not width: animating width re-lays out the sheet on every frame */}
+        <div className="meter-fill" style={{ transform: `scaleX(${Math.min(1, level * 4)})` }} />
       </div>
       <div className="setting-desc">
         {isMicrophoneEnabled ? "Talk to test: the bar should move when you speak." : "You're muted. Unmute to test your mic."}

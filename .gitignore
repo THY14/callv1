@@ -6,3 +6,7 @@ next-env.d.ts
 
 .vercel
 .env*
+
+# design skill working files (screenshots, direction sheet)
+.taste-skill/
+.hallmark/

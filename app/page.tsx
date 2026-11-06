@@ -15,6 +15,7 @@ import {
   CallIcon,
   ChatIcon,
   ChevronIcon,
+  CloseIcon,
   CopyIcon,
   HangUpIcon,
   HashIcon,
@@ -286,25 +287,34 @@ export default function Page() {
     return (
       <div className="name-screen">
         <form className="name-card" onSubmit={saveName}>
-          <div className="name-logo">
-            <CallIcon size={30} />
+          <div className="name-brand">
+            <span className="brand-logo">
+              <CallIcon size={18} />
+            </span>
+            Calls
           </div>
           <h1>{inviteCode ? "You're invited to a call" : "Welcome"}</h1>
           <p>
-            {inviteCode
-              ? `Pick a name, then join room ${formatCode(inviteCode)}.`
-              : "Pick a display name so friends know who's talking."}
+            {inviteCode ? (
+              <>
+                Pick a name, then join room <span className="name-code">{formatCode(inviteCode)}</span>.
+              </>
+            ) : (
+              "Pick a display name so friends know who's talking."
+            )}
           </p>
           <input
+            className="field"
             autoFocus
             maxLength={32}
             placeholder="Your name"
+            aria-label="Your name"
             autoComplete="nickname"
             enterKeyHint="go"
             value={nameDraft}
             onChange={(e) => setNameDraft(e.target.value)}
           />
-          <button type="submit" disabled={!nameDraft.trim()}>
+          <button type="submit" className="btn btn-primary btn-lg btn-block" disabled={!nameDraft.trim()}>
             Continue
           </button>
         </form>
@@ -322,8 +332,11 @@ export default function Page() {
     <RoomContext.Provider value={session?.room}>
       <div className="app" data-main-view={mainView} data-in-call={session ? "" : undefined}>
         {error ? (
-          <button className="toast" onClick={() => setError("")}>
-            {error} <span className="toast-close">✕</span>
+          <button className="toast" onClick={() => setError("")} role="alert">
+            {error}
+            <span className="toast-close" aria-hidden="true">
+              <CloseIcon size={16} />
+            </span>
           </button>
         ) : (
           notice && (
@@ -349,7 +362,7 @@ export default function Page() {
               <span className="channel-name">Home</span>
             </button>
 
-            <div className="section-label">ROOMS</div>
+            <div className="section-label">Rooms</div>
             {myCode ? (
               <RoomEntry
                 label="My room"
@@ -384,7 +397,7 @@ export default function Page() {
               />
             )}
 
-            <div className="section-label">VOICE CHANNELS</div>
+            <div className="section-label">Voice channels</div>
             {CHANNELS.map((c) => {
               const members = (occupancy[c.id] ?? NO_ONE).members;
               const inThis = session?.key === c.id;
@@ -414,7 +427,7 @@ export default function Page() {
               );
             })}
 
-            <div className="section-label">TEXT CHANNELS</div>
+            <div className="section-label">Text channels</div>
             {TEXT_CHANNELS.map((c) => (
               <button
                 key={c.id}
@@ -432,7 +445,6 @@ export default function Page() {
           {session && (
             <div className="voice-bar">
               <button className="voice-bar-main" onClick={showCall}>
-                <span className="voice-dot" />
                 <span className="voice-bar-text">
                   <strong>
                     Voice Connected <Elapsed since={session.startedAt} className="voice-bar-time" />
@@ -441,7 +453,7 @@ export default function Page() {
                 </span>
               </button>
               <button className="voice-bar-leave" onClick={hangUp} aria-label="Disconnect" title="Disconnect">
-                <HangUpIcon size={22} />
+                <HangUpIcon size={20} />
               </button>
             </div>
           )}
@@ -548,7 +560,6 @@ export default function Page() {
           {session && mainView !== "call" && mainView !== "text" && (
             <div className="call-pill">
               <button className="call-pill-main" onClick={showCall}>
-                <span className="voice-dot" />
                 <span className="call-pill-text">
                   <strong>{session.title}</strong>
                   <Elapsed since={session.startedAt} className="tabular" />
@@ -558,7 +569,7 @@ export default function Page() {
                 </span>
               </button>
               <button className="call-pill-leave" onClick={hangUp} aria-label="Leave call">
-                <HangUpIcon size={22} />
+                <HangUpIcon size={20} />
               </button>
             </div>
           )}
@@ -600,7 +611,7 @@ function ChatList({ onOpen }: { onOpen: (id: TextChannelId) => void }) {
           <div className="channel-cards">
             {TEXT_CHANNELS.map((c) => (
               <button key={c.id} className="call-row" onClick={() => onOpen(c.id)}>
-                <span className="icon-badge">
+                <span className="row-icon">
                   <HashIcon size={20} />
                 </span>
                 <span className="call-row-text">

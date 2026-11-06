@@ -5,7 +5,7 @@ import type { RealtimeChannel } from "@supabase/supabase-js";
 import { MAX_MESSAGE_LENGTH } from "@/lib/channels";
 import { getSupabase, type ChatMessage } from "@/lib/supabase";
 import { getAuthorKey, getAuthorToken } from "@/lib/author";
-import { ChevronIcon, HashIcon } from "@/components/Icons";
+import { ChevronIcon, HashIcon, SendIcon } from "@/components/Icons";
 
 const PAGE_SIZE = 50;
 const GROUP_WINDOW_MS = 5 * 60 * 1000; // same author within 5 min = one block, like Discord
@@ -311,7 +311,7 @@ export default function TextChat({ channel, userName, onBack, onError }: Props) 
         <button className="back-btn mobile-only" onClick={onBack} aria-label="Back">
           <ChevronIcon size={22} />
         </button>
-        <span className="header-icon">
+        <span className="header-icon desktop-only">
           <HashIcon size={20} />
         </span>
         <div className="room-title">
@@ -338,7 +338,6 @@ export default function TextChat({ channel, userName, onBack, onError }: Props) 
               </button>
             ) : (
               <div className="chat-welcome">
-                <div className="chat-welcome-icon">#</div>
                 <h3>Welcome to #{channel.name}!</h3>
                 <p>This is the start of the #{channel.name} channel.</p>
               </div>
@@ -400,9 +399,7 @@ export default function TextChat({ channel, userName, onBack, onError }: Props) 
           onKeyDown={onKeyDown}
         />
         <button type="submit" className="send-btn" disabled={!draft.trim() || sending} aria-label="Send">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-            <path d="M3.4 20.4 21 12 3.4 3.6l-.01 6.53L15 12 3.39 13.87z" />
-          </svg>
+          <SendIcon size={20} />
         </button>
       </form>
     </div>
@@ -566,11 +563,11 @@ function EditBox({
         onKeyDown={onKeyDown}
       />
       <div className="edit-actions">
-        <span className="edit-hint">Enter to save · Esc to cancel</span>
+        <span className="edit-hint">Enter to save, Esc to cancel</span>
         <button type="button" className="edit-cancel" onClick={onCancel}>
           Cancel
         </button>
-        <button type="button" className="edit-save" onClick={() => onSave(value)} disabled={!value.trim()}>
+        <button type="button" className="btn btn-primary edit-save" onClick={() => onSave(value)} disabled={!value.trim()}>
           Save
         </button>
       </div>
@@ -601,8 +598,8 @@ function linkify(text: string) {
   );
 }
 
-// Same name -> same avatar colour, so people are easy to tell apart
-const AVATAR_COLORS = ["#5865f2", "#3ba55c", "#faa61a", "#ed4245", "#eb459e", "#00a8fc", "#9b59b6", "#1abc9c"];
+// Same name -> same avatar tone, so people are easy to tell apart (warm greys from globals.css)
+const AVATAR_COLORS = ["var(--avatar-1)", "var(--avatar-2)", "var(--avatar-3)", "var(--avatar-4)"];
 function colorFor(name: string) {
   let h = 0;
   for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) >>> 0;

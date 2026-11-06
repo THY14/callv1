@@ -6,16 +6,7 @@ import { NO_ONE, type Occupancy, type Target } from "@/lib/calls";
 import { formatCode, formatCodeInput, isRoomCode, normalizeCode } from "@/lib/rooms";
 import type { Member } from "@/components/VoiceMembers";
 import { Elapsed } from "@/components/Elapsed";
-import {
-  CallIcon,
-  CopyIcon,
-  HomeIcon,
-  KeypadIcon,
-  PlusIcon,
-  SettingsIcon,
-  ShareIcon,
-  VolumeIcon,
-} from "@/components/Icons";
+import { CallIcon, CopyIcon, PlusIcon, SettingsIcon, ShareIcon, VolumeIcon } from "@/components/Icons";
 
 type Props = {
   name: string;
@@ -43,11 +34,11 @@ export default function Home(props: Props) {
 
   return (
     <div className="home">
-      <header className="home-top">
+      <header className="home-top phone-bar">
         <span className="brand-logo">
           <CallIcon size={18} />
         </span>
-        <h1>Calls</h1>
+        <span className="top-title">Calls</span>
         <button className="icon-btn" onClick={props.onOpenSettings} aria-label="Audio settings" title="Audio settings">
           <SettingsIcon size={20} />
         </button>
@@ -59,7 +50,7 @@ export default function Home(props: Props) {
       <div className="home-body">
         <div className="home-inner">
           <div className="hello">
-            <h2>Hi {name} 👋</h2>
+            <h1>Hi {name}</h1>
             <p>Start a call or join your friends. Up to {MAX_PARTICIPANTS} people, no time limit.</p>
           </div>
 
@@ -87,7 +78,7 @@ export default function Home(props: Props) {
               myRoomChecked && (
                 <button className="card create-card" onClick={props.onCreate} disabled={props.creating}>
                   <span className="create-plus">
-                    <PlusIcon size={28} />
+                    <PlusIcon size={24} />
                   </span>
                   <strong>{props.creating ? "Creating…" : "Create a room"}</strong>
                   <span className="muted">Get a code to send to friends</span>
@@ -101,7 +92,7 @@ export default function Home(props: Props) {
             />
           </div>
 
-          <h3 className="section-title">Channels</h3>
+          <h2 className="section-title">Voice channels</h2>
           <div className="channel-cards">
             {CHANNELS.map((c) => {
               const info = occupancy[c.id] ?? NO_ONE;
@@ -114,14 +105,14 @@ export default function Home(props: Props) {
                   onClick={() => props.onJoin({ kind: "channel", id: c.id })}
                   disabled={full || (joining !== null && joining !== c.id)}
                 >
-                  <span className="icon-badge">
+                  <span className="row-icon">
                     <VolumeIcon size={20} />
                   </span>
                   <span className="call-row-text">
                     <strong>{c.name}</strong>
                     <CallStatus info={info} />
                   </span>
-                  <Faces members={info.members} />
+                  <Faces members={info.members} showNames />
                   <span className={`join-pill ${inIt ? "current" : ""}`}>
                     {joining === c.id ? "…" : inIt ? "Open" : full ? "Full" : "Join"}
                   </span>
@@ -135,28 +126,24 @@ export default function Home(props: Props) {
   );
 }
 
-/** "Nobody here" or "● 3 in call · 12:34" */
+/** "Nobody here" or "3 in call  12:34" (the live count is the one place colour appears) */
 function CallStatus({ info }: { info: Occupancy[string] }) {
   const n = info.members.length;
   if (n === 0) return <span className="muted">Nobody here</span>;
   return (
     <span className="live-text">
-      <span className="live-dot" />
-      {n} in call
-      {info.startedAt && (
-        <>
-          {" · "}
-          <Elapsed since={info.startedAt} className="tabular" />
-        </>
-      )}
+      <span>{n} in call</span>
+      {info.startedAt && <Elapsed since={info.startedAt} className="tabular" />}
     </span>
   );
 }
 
-/** Overlapping avatar stack, max 4 */
-function Faces({ members }: { members: Member[] }) {
+/** Overlapping avatar stack, max 4; on wide screens the first names too */
+function Faces({ members, showNames = false }: { members: Member[]; showNames?: boolean }) {
   if (members.length === 0) return null;
   const extra = members.length - 4;
+  const names = members.slice(0, 2).map((m) => m.name);
+  const rest = members.length - names.length;
   return (
     <span className="faces">
       {members.slice(0, 4).map((m) => (
@@ -165,6 +152,12 @@ function Faces({ members }: { members: Member[] }) {
         </span>
       ))}
       {extra > 0 && <span className="face more">+{extra}</span>}
+      {showNames && (
+        <span className="face-names">
+          {names.join(", ")}
+          {rest > 0 && ` and ${rest} more`}
+        </span>
+      )}
     </span>
   );
 }
@@ -182,20 +175,17 @@ function InviteCard({
 }) {
   return (
     <div className="card invite-card">
-      <div className="card-head">
-        <span className="icon-badge blurple">
-          <CallIcon size={20} />
-        </span>
-        <span className="card-title">
-          <strong>You&apos;re invited</strong>
-          <span className="muted">Room {formatCode(code)}</span>
-        </span>
+      <span className="card-title">
+        <strong>You&apos;re invited</strong>
+        <span className="muted">Room {formatCode(code)}</span>
+        <CallStatus info={info} />
+      </span>
+      <div className="invite-side">
         <Faces members={info.members} />
+        <button className="btn btn-primary btn-lg" onClick={onJoin} disabled={joining !== null}>
+          <CallIcon size={18} /> {joining === code ? "Joining…" : "Join call"}
+        </button>
       </div>
-      <CallStatus info={info} />
-      <button className="btn btn-green btn-big" onClick={onJoin} disabled={joining !== null}>
-        <CallIcon size={20} /> {joining === code ? "Joining…" : "Join call"}
-      </button>
     </div>
   );
 }
@@ -221,11 +211,8 @@ function MyRoomCard({
   return (
     <div className="card room-card">
       <div className="card-head">
-        <span className="icon-badge green">
-          <HomeIcon size={20} />
-        </span>
         <span className="card-title">
-          <strong>My room</strong>
+          <h2>My room</h2>
           <CallStatus info={info} />
         </span>
         <Faces members={info.members} />
@@ -237,10 +224,10 @@ function MyRoomCard({
         </span>
       </button>
       <div className="card-actions">
-        <button className="btn btn-gray" onClick={onShare}>
+        <button className="btn btn-secondary" onClick={onShare}>
           <ShareIcon size={18} /> Share link
         </button>
-        <button className="btn btn-green" onClick={onJoin} disabled={joining !== null && !inIt}>
+        <button className="btn btn-primary" onClick={onJoin} disabled={joining !== null && !inIt}>
           <CallIcon size={18} /> {joining === code ? "Joining…" : inIt ? "Open" : busy ? "Join" : "Start call"}
         </button>
       </div>
@@ -268,11 +255,8 @@ function JoinCodeCard({
   return (
     <form className="card join-card" onSubmit={submit}>
       <div className="card-head">
-        <span className="icon-badge blurple">
-          <KeypadIcon size={20} />
-        </span>
         <span className="card-title">
-          <strong>Join with a code</strong>
+          <h2>Join with a code</h2>
           <span className="muted">Got a link? Just open it.</span>
         </span>
       </div>
@@ -290,7 +274,7 @@ function JoinCodeCard({
           enterKeyHint="go"
           inputMode="text"
         />
-        <button className="btn btn-blurple" type="submit" disabled={disabled || normalizeCode(draft).length < 6}>
+        <button className="btn btn-primary" type="submit" disabled={disabled || normalizeCode(draft).length < 6}>
           Join
         </button>
       </div>
